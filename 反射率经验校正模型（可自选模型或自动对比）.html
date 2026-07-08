@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>反射率经验校正模型</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin:0; background:#f4f6fb; color:#1f2937; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",Arial,sans-serif; }
+    .wrap { max-width:1180px; margin:22px auto 50px; padding:0 14px; }
+    .card { background:#fff; border-radius:18px; box-shadow:0 10px 30px rgba(15,23,42,.08); padding:22px; margin-bottom:18px; }
+    h1 { margin:0 0 8px; font-size:24px; } h2 { margin:0 0 14px; font-size:18px; } h3 { margin:16px 0 10px; font-size:16px; }
+    p, li { line-height:1.75; } .sub { margin:0; color:#64748b; font-size:14px; }
+    .notice { margin-top:12px; padding:12px 14px; border:1px solid #e5e7eb; border-radius:12px; background:#f8fafc; color:#475569; font-size:14px; line-height:1.75; word-break:break-word; }
+    .ok { color:#047857; font-weight:700; } .warn { color:#b45309; font-weight:700; } .err { color:#b91c1c; font-weight:700; }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+    .grid4 { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+    input[type="file"], select { width:100%; padding:11px 12px; border:1px solid #d1d5db; border-radius:10px; background:#fff; font-size:15px; outline:none; }
+    select:focus, input:focus { border-color:#2563eb; box-shadow:0 0 0 3px rgba(37,99,235,.12); }
+    label { display:block; font-size:14px; font-weight:700; margin-bottom:7px; color:#334155; }
+    button { border:none; border-radius:999px; padding:11px 17px; font-size:15px; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent; margin:8px 8px 0 0; }
+    button:active { transform:scale(.98); } .primary { background:#2563eb; color:#fff; font-weight:800; } .secondary { background:#e5e7eb; color:#111827; } .danger { background:#fee2e2; color:#991b1b; }
+    .scroll { overflow-x:auto; } table { width:100%; border-collapse:collapse; border-radius:14px; overflow:hidden; margin-top:10px; font-size:14px; }
+    th,td { border-bottom:1px solid #e5e7eb; padding:10px; text-align:center; vertical-align:middle; white-space:nowrap; }
+    th { background:#f1f5f9; color:#334155; font-weight:800; } tr:last-child td { border-bottom:none; } td:first-child, th:first-child { text-align:left; }
+    tr.best-model-row td { background:#e6ffe6; }
+    .besttag { display:inline-block; margin-left:6px; padding:2px 7px; border-radius:999px; background:#16a34a; color:#fff; font-size:12px; font-weight:800; }
+    .metric { background:#f9fafb; border:1px solid #e5e7eb; border-radius:14px; padding:14px; }
+    .metric .name { color:#64748b; font-size:13px; margin-bottom:8px; } .metric .val { font-size:22px; font-weight:900; color:#111827; line-height:1.35; }
+    .metric .small { margin-top:8px; color:#64748b; font-size:12px; line-height:1.6; }
+    canvas { width:100%; height:340px; border:1px solid #e5e7eb; border-radius:14px; background:#fff; display:block; }
+    .chartgrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:12px; }
+    .charttitle { font-weight:800; margin:0 0 8px; color:#334155; }
+    textarea { width:100%; min-height:170px; border:1px solid #d1d5db; border-radius:12px; padding:12px; font-family:Consolas,Monaco,monospace; font-size:13px; line-height:1.6; resize:vertical; background:#fff; }
+    .hidden { display:none; }
+    @media (max-width:820px) { .wrap{margin:12px auto 40px;} .card{padding:16px;border-radius:16px;} h1{font-size:21px;} .grid,.grid4,.chartgrid{grid-template-columns:1fr;} button{width:100%;margin-right:0;} canvas{height:280px;} th,td{font-size:13px;padding:8px;} }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>反射率经验校正模型</h1>
+    <p class="sub">上传记录了不同地物样本四波段 DN 值与实测参考反射率的 Excel/CSV 表格，自动计算 Band 1–Band 4 的经验校正方程、R²、调整后 R² 和 RMSE。</p>
+    <div class="notice">推荐字段格式：地物类型、B_DN、B_反射率、G_DN、G_反射率、R_DN、R_反射率、NIR_DN、NIR_反射率。Excel 解析依赖在线 SheetJS 库；如果离线打不开 Excel，请把表格另存为 CSV 后上传。</div>
+    <div class="grid" style="margin-top:16px;">
+      <div><label for="fileInput">上传 Excel / CSV 表格</label><input id="fileInput" type="file" accept=".xlsx,.xls,.csv,.txt" /></div>
+      <div><label for="sheetSelect">工作表</label><select id="sheetSelect" disabled><option>请先上传文件</option></select></div>
+      <div><label for="unitMode">反射率单位识别</label><select id="unitMode"><option value="auto" selected>自动识别：≤1.5 视为 0–1，否则视为百分数</option><option value="percent">表中反射率为百分数，例如 32.5 表示 32.5%</option><option value="ratio">表中反射率为 0–1 小数，例如 0.325 表示 32.5%</option></select></div>
+      <div><label for="typeCol">地物类型列，可选</label><select id="typeCol"><option value="">不使用</option></select></div>
+    </div>
+    <button id="exportBtn" class="secondary" type="button">导出模型系数 CSV</button>
+    <button id="clearBtn" class="danger" type="button">清空</button>
+    <div id="status" class="notice">尚未上传文件。</div>
+  </div>
+
+  <div id="mapCard" class="card hidden">
+    <h2>列字段匹配</h2><p class="sub">如果自动识别不准确，请手动选择每个波段对应的 DN 列与实测反射率列。</p>
+    <div class="scroll"><table><thead><tr><th>波段</th><th>含义</th><th>DN 值列</th><th>实测参考反射率列</th></tr></thead><tbody id="mappingBody"></tbody></table></div>
+  </div>
+
+  <div id="typeFilterCard" class="card hidden">
+    <h2>选择参与回归的地物样本</h2>
+    <p class="sub">先在上方选择“地物类型列”，然后勾选需要参与回归的地物类型。未勾选的地物不会参与四个波段的模型计算。</p>
+    <div class="notice">建议先使用全部地物建立模型；若发现某类地物明显偏离回归关系，可取消勾选后重新计算模型，并对比 R² 与 RMSE 的变化。</div>
+    <div id="typeCheckBox" class="typegrid"></div>
+    <div style="max-width:360px;margin-top:14px;">
+      <label for="modelType">校正模型类型</label>
+      <select id="modelType">
+        <option value="compare_all">自动对比全部模型</option>
+        <option value="linear" selected>线性 (y = ax + b)</option>
+        <option value="quadratic">二次多项式 (y = ax² + bx + c)</option>
+        <option value="cubic">三次多项式 (y = ax³ + bx² + cx + d)</option>
+        <option value="exponential">指数 (y = a * e^(bx))</option>
+        <option value="logarithmic">对数 (y = a * ln(x) + b)</option>
+        <option value="power">幂函数 (y = a * x^b)</option>
+      </select>
+    </div>
+    <button id="calcBtn" class="primary" type="button">计算四波段校正模型</button>
+    <button id="selectAllTypesBtn" class="secondary" type="button">全选地物</button>
+    <button id="clearAllTypesBtn" class="secondary" type="button">清空选择</button>
+  </div>
+
+  <div id="resultCard" class="card hidden">
+    <h2>经验校正模型结果</h2><div class="grid4" id="metrics"></div>
+    <div class="scroll"><table><thead><tr><th>波段</th><th>含义</th><th>模型类型</th><th>有效样本数</th><th>校正方程，输出 0–1 反射率</th><th>R²</th><th>调整后 R²</th><th>RMSE/%</th></tr></thead><tbody id="resultBody"></tbody></table></div>
+    <h3>疑似异常点</h3>
+    <div class="scroll"><table><thead><tr><th>波段</th><th>样本</th><th>DN</th><th>实测反射率/%</th><th>模型预测/%</th><th>残差/%</th><th>标准化残差</th><th>判断</th></tr></thead><tbody id="outlierBody"></tbody></table></div>
+  </div>
+
+  <div id="chartCard" class="card hidden">
+    <h2>散点图与回归曲线</h2>
+    <div class="chartgrid">
+      <div><div class="charttitle">Band 1 蓝光</div><canvas id="chart_b1" width="620" height="340"></canvas></div>
+      <div><div class="charttitle">Band 2 绿光</div><canvas id="chart_b2" width="620" height="340"></canvas></div>
+      <div><div class="charttitle">Band 3 红光</div><canvas id="chart_b3" width="620" height="340"></canvas></div>
+      <div><div class="charttitle">Band 4 近红外</div><canvas id="chart_b4" width="620" height="340"></canvas></div>
+    </div>
+  </div>
+
+  <div id="previewCard" class="card hidden"><h2>数据预览</h2><div class="scroll"><table id="previewTable"></table></div></div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var workbook=null, sheets={}, currentRows=[], headers=[], modelResults=[], currentFileName="";
+  var bandDefs=[
+    {key:"b1",band:"Band 1",name:"蓝光 Blue",dnId:"b1_dn",refId:"b1_ref",enviVar:"b1"},
+    {key:"b2",band:"Band 2",name:"绿光 Green",dnId:"b2_dn",refId:"b2_ref",enviVar:"b2"},
+    {key:"b3",band:"Band 3",name:"红光 Red",dnId:"b3_dn",refId:"b3_ref",enviVar:"b3"},
+    {key:"b4",band:"Band 4",name:"近红外 NIR",dnId:"b4_dn",refId:"b4_ref",enviVar:"b4"}
+  ];
+  var allModelTypes=["linear","quadratic","cubic","exponential","logarithmic","power"];
+  var modelNames={compare_all:"自动对比全部模型",linear:"线性",quadratic:"二次多项式",cubic:"三次多项式",exponential:"指数",logarithmic:"对数",power:"幂函数"};
+  function el(id){return document.getElementById(id);}
+  function showCard(id){var node=el(id); if(node) node.classList.remove("hidden");}
+  function hideCard(id){var node=el(id); if(node) node.classList.add("hidden");} 
+  function escapeHtml(s){return String(s||"").replace(/[&<>"']/g,function(m){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m];});}
+  function setStatus(msg,type){var cls=type==="ok"?"ok":(type==="warn"?"warn":(type==="err"?"err":"")); el("status").innerHTML=cls?'<span class="'+cls+'">'+msg+'</span>':msg;}
+  function normalizeHeader(s){return String(s||"").toLowerCase().replace(/\s+/g,"").replace(/[（）()_\-—:：\/\\]/g,"").replace(/％/g,"%");}
+  function parseNumber(v){if(v===null||v===undefined)return NaN; if(typeof v==="number")return isFinite(v)?v:NaN; var s=String(v).trim(); if(!s)return NaN; s=s.replace(/,/g,"").replace(/％/g,"%").replace(/%/g,""); var n=Number(s); return isFinite(n)?n:NaN;}
+  function matrixToObjects(matrix){if(!matrix||matrix.length<2)return {headers:[],rows:[]}; var hs=[]; for(var i=0;i<matrix[0].length;i++){var h=String(matrix[0][i]||"").trim(); hs.push(h||("列"+(i+1)));} var rows=[]; for(var r=1;r<matrix.length;r++){var obj={},empty=true; for(var c=0;c<hs.length;c++){var val=matrix[r][c]; if(val!==undefined&&String(val).trim()!=="")empty=false; obj[hs[c]]=val;} if(!empty)rows.push(obj);} return {headers:hs,rows:rows};}
+  function parseCSVLine(line,delimiter){var out=[],cur="",inq=false; for(var i=0;i<line.length;i++){var ch=line.charAt(i); if(ch==='"'){if(inq&&line.charAt(i+1)==='"'){cur+='"'; i++;}else{inq=!inq;}}else if(ch===delimiter&&!inq){out.push(cur);cur="";}else{cur+=ch;}} out.push(cur); return out;}
+  function csvToRows(text){var lines=text.replace(/\r/g,"").split("\n").filter(function(x){return x.trim()!=="";}); if(!lines.length)return {headers:[],rows:[]}; var first=lines[0], delimiter=","; if(first.indexOf("\t")>=0)delimiter="\t"; else if(first.indexOf(";")>=0)delimiter=";"; var matrix=[]; for(var i=0;i<lines.length;i++)matrix.push(parseCSVLine(lines[i],delimiter)); return matrixToObjects(matrix);}
+  function optionHtml(selected){var html='<option value="">请选择</option>'; for(var i=0;i<headers.length;i++){var h=headers[i]; html+='<option value="'+escapeHtml(h)+'"'+(h===selected?' selected':'')+'>'+escapeHtml(h)+'</option>';} return html;}
+  function autoFindTypeColumn(){var candidates=["地物类型","类型","地物","class","type","name","类别"]; for(var i=0;i<headers.length;i++){var h=normalizeHeader(headers[i]); for(var j=0;j<candidates.length;j++){if(h.indexOf(normalizeHeader(candidates[j]))>=0)return headers[i];}} return "";}
+  function scoreHeader(header,bandNum,kind){var h=normalizeHeader(header),score=0; var tokens=["b"+bandNum,"band"+bandNum,"波段"+bandNum,"第"+bandNum+"波段"]; if(bandNum===1)tokens.push("蓝光","blue","b"); if(bandNum===2)tokens.push("绿光","green","g"); if(bandNum===3)tokens.push("红光","red","r"); if(bandNum===4)tokens.push("近红外","nir","nearinfrared","n"); for(var i=0;i<tokens.length;i++){if(h.indexOf(normalizeHeader(tokens[i]))>=0)score+=5;} if(kind==="dn"){if(h.indexOf("dn")>=0)score+=8; if(h.indexOf("像元值")>=0||h.indexOf("灰度值")>=0||h.indexOf("影像值")>=0)score+=5; if(h.indexOf("反射")>=0||h.indexOf("reflect")>=0||h.indexOf("ref")>=0)score-=6;}else{if(h.indexOf("反射率")>=0||h.indexOf("reflectance")>=0||h.indexOf("reflect")>=0||h.indexOf("ref")>=0)score+=8; if(h.indexOf("实测")>=0||h.indexOf("参考")>=0||h.indexOf("光谱")>=0)score+=4; if(h.indexOf("dn")>=0||h.indexOf("像元值")>=0)score-=6;} return score;}
+  function autoFindColumn(bandNum,kind){var best="",bestScore=-9999; for(var i=0;i<headers.length;i++){var s=scoreHeader(headers[i],bandNum,kind); if(s>bestScore){bestScore=s;best=headers[i];}} return bestScore>5?best:"";}
+  function renderMapping(){var typeSel=el("typeCol"); var type=autoFindTypeColumn(); typeSel.innerHTML='<option value="">不使用</option>'; for(var h=0;h<headers.length;h++){typeSel.innerHTML+='<option value="'+escapeHtml(headers[h])+'"'+(headers[h]===type?' selected':'')+'>'+escapeHtml(headers[h])+'</option>';} var html=""; for(var i=0;i<bandDefs.length;i++){var b=bandDefs[i], bandNum=i+1; html+="<tr><td>"+b.band+"</td><td>"+b.name+"</td><td><select id='"+b.dnId+"'>"+optionHtml(autoFindColumn(bandNum,"dn"))+"</select></td><td><select id='"+b.refId+"'>"+optionHtml(autoFindColumn(bandNum,"ref"))+"</select></td></tr>";} el("mappingBody").innerHTML=html; renderTypeFilter();}
+
+  function renderTypeFilter(){var typeCol=el("typeCol").value; var box=el("typeCheckBox"); if(!box)return; if(!typeCol){box.innerHTML='<div class="notice">未选择地物类型列，当前将使用表格中的全部有效样本参与回归。</div>'; showCard("typeFilterCard"); return;} var counts={}; var order=[]; for(var i=0;i<currentRows.length;i++){var v=String(currentRows[i][typeCol]||"未命名样本").trim(); if(!v)v="未命名样本"; if(counts[v]===undefined){counts[v]=0; order.push(v);} counts[v]++;} var html=""; for(var j=0;j<order.length;j++){var val=order[j]; var id="type_filter_"+j; html+='<label class="checkitem" for="'+id+'"><input id="'+id+'" class="typeFilter" type="checkbox" value="'+escapeHtml(val)+'" checked><span>'+escapeHtml(val)+'（'+counts[val]+'）</span></label>'; } box.innerHTML=html||'<div class="notice">没有识别到地物类型。</div>'; showCard("typeFilterCard");}
+
+  function getSelectedTypes(){var typeCol=el("typeCol").value; if(!typeCol)return null; var checks=document.querySelectorAll(".typeFilter"); var arr=[]; for(var i=0;i<checks.length;i++){if(checks[i].checked)arr.push(checks[i].value);} return arr;}
+  function renderPreview(){var table=el("previewTable"), maxRows=Math.min(8,currentRows.length); var html="<thead><tr>"; for(var i=0;i<headers.length;i++)html+="<th>"+escapeHtml(headers[i])+"</th>"; html+="</tr></thead><tbody>"; for(var r=0;r<maxRows;r++){html+="<tr>"; for(var c=0;c<headers.length;c++){html+="<td>"+escapeHtml(currentRows[r][headers[c]])+"</td>";} html+="</tr>";} html+="</tbody>"; table.innerHTML=html;}
+  function afterLoadRows(){if(!headers.length||!currentRows.length){setStatus("未读取到有效表格数据，请检查第一行是否为字段名。","err");return;} renderMapping(); renderPreview(); showCard("mapCard"); showCard("typeFilterCard"); showCard("previewCard"); hideCard("resultCard"); hideCard("chartCard"); setStatus("读取成功："+currentFileName+"，共识别 "+headers.length+" 个字段、"+currentRows.length+" 行数据。请检查列字段匹配并选择参与回归的地物类型后计算模型。","ok");}
+  function loadSheet(name){var result=sheets[name]; if(!result)return; headers=result.headers; currentRows=result.rows; afterLoadRows();}
+  function readCSVFile(file){var reader=new FileReader(); reader.onload=function(e){var result=csvToRows(e.target.result||""); headers=result.headers; currentRows=result.rows; sheets={CSV:result}; el("sheetSelect").innerHTML='<option value="CSV">CSV</option>'; el("sheetSelect").disabled=true; afterLoadRows();}; reader.onerror=function(){setStatus("文件读取失败。","err");}; reader.readAsText(file,"UTF-8");}
+  function readExcelFile(file){if(typeof XLSX==="undefined"){setStatus("Excel 解析库未加载。请联网后刷新页面，或将 Excel 另存为 CSV 后上传。","err");return;} var reader=new FileReader(); reader.onload=function(e){try{var data=new Uint8Array(e.target.result); workbook=XLSX.read(data,{type:"array"}); sheets={}; var options=""; for(var i=0;i<workbook.SheetNames.length;i++){var name=workbook.SheetNames[i]; var matrix=XLSX.utils.sheet_to_json(workbook.Sheets[name],{header:1,defval:""}); sheets[name]=matrixToObjects(matrix); options+='<option value="'+escapeHtml(name)+'">'+escapeHtml(name)+'</option>'; } el("sheetSelect").innerHTML=options; el("sheetSelect").disabled=false; loadSheet(workbook.SheetNames[0]);}catch(err){setStatus("Excel 解析失败："+err.message,"err");}}; reader.onerror=function(){setStatus("文件读取失败。","err");}; reader.readAsArrayBuffer(file);}
+  function convertReflectance(values){var mode=el("unitMode").value,maxAbs=0; for(var i=0;i<values.length;i++){if(isFinite(values[i]))maxAbs=Math.max(maxAbs,Math.abs(values[i]));} var isRatio=false; if(mode==="ratio")isRatio=true; else if(mode==="percent")isRatio=false; else isRatio=maxAbs<=1.5; var out=[]; for(var j=0;j<values.length;j++)out.push(isRatio?values[j]*100:values[j]); return {values:out,sourceUnit:isRatio?"0–1":"%"};}
+  function fmt(x,n){return isFinite(x)?Number(x).toFixed(n):"--";}
+  function fmtMaybe(x,n){return isFinite(x)?Number(x).toFixed(n):"--";}
+  function fmtCoef(x,n){if(!isFinite(x))return "--"; var s=Number(x).toFixed(n===undefined?8:n); s=s.replace(/\.?0+$/,""); return s==="-0"?"0":s;}
+  function getModelType(){var node=el("modelType"); return node?node.value:"linear";}
+  function getModelName(type){return modelNames[type]||type;}
+  function parameterCount(type){return type==="quadratic"?2:(type==="cubic"?3:1);}
+  function minimumSamples(type){return type==="quadratic"?4:(type==="cubic"?5:((type==="exponential"||type==="logarithmic"||type==="power")?3:2));}
+  function sampleAlertMessage(type){if(type==="quadratic")return "二次多项式至少需要4个有效样本点"; if(type==="cubic")return "三次多项式至少需要5个有效样本点"; return getModelName(type)+"过滤无效数据后至少需要3个有效样本点";}
+  function validIndexesForModel(xs,ys,type){var idx=[]; for(var i=0;i<xs.length;i++){var x=xs[i],y=ys[i]; if(!isFinite(x)||!isFinite(y))continue; if(type==="exponential"&&y<=0)continue; if(type==="logarithmic"&&x<=0)continue; if(type==="power"&&(x<=0||y<=0))continue; idx.push(i);} return idx;}
+  function linearCoefficients(xs,ys){var n=xs.length;if(n<2)return null; var sx=0,sy=0; for(var i=0;i<n;i++){sx+=xs[i];sy+=ys[i];} var mx=sx/n,my=sy/n,sxx=0,sxy=0; for(var j=0;j<n;j++){var dx=xs[j]-mx; sxx+=dx*dx; sxy+=dx*(ys[j]-my);} if(Math.abs(sxx)<1e-12)return null; return [sxy/sxx,my-(sxy/sxx)*mx];}
+  function solveLinearSystem(a,b){var n=b.length; for(var i=0;i<n;i++){var max=i; for(var r=i+1;r<n;r++){if(Math.abs(a[r][i])>Math.abs(a[max][i]))max=r;} if(Math.abs(a[max][i])<1e-12)return null; if(max!==i){var tmp=a[i];a[i]=a[max];a[max]=tmp; var tb=b[i];b[i]=b[max];b[max]=tb;} var pivot=a[i][i]; for(var c=i;c<n;c++)a[i][c]/=pivot; b[i]/=pivot; for(var rr=0;rr<n;rr++){if(rr===i)continue; var factor=a[rr][i]; if(factor===0)continue; for(var cc=i;cc<n;cc++)a[rr][cc]-=factor*a[i][cc]; b[rr]-=factor*b[i];}} return b;}
+  function polynomialCoefficients(xs,ys,degree){var n=xs.length;if(n<degree+1)return null; var size=degree+1,sums=[]; for(var p=0;p<=degree*2;p++){var s=0; for(var i=0;i<n;i++)s+=Math.pow(xs[i],p); sums[p]=s;} var a=[],b=[]; for(var row=0;row<size;row++){a[row]=[]; for(var col=0;col<size;col++)a[row][col]=sums[row+col]; var rhs=0; for(var j=0;j<n;j++)rhs+=ys[j]*Math.pow(xs[j],row); b[row]=rhs;} var beta=solveLinearSystem(a,b); if(!beta)return null; var out=[]; for(var k=degree;k>=0;k--)out.push(beta[k]); return out;}
+  function predictModel(modelType,coefficients,x){if(!coefficients)return NaN; if(modelType==="linear")return coefficients[0]*x+coefficients[1]; if(modelType==="quadratic")return coefficients[0]*x*x+coefficients[1]*x+coefficients[2]; if(modelType==="cubic")return coefficients[0]*x*x*x+coefficients[1]*x*x+coefficients[2]*x+coefficients[3]; if(modelType==="exponential")return coefficients[0]*Math.exp(coefficients[1]*x); if(modelType==="logarithmic")return x>0?coefficients[0]*Math.log(x)+coefficients[1]:NaN; if(modelType==="power")return x>0?coefficients[0]*Math.pow(x,coefficients[1]):NaN; return NaN;}
+  function fitModel(xData,yData,modelType){var idx=validIndexesForModel(xData,yData,modelType),xs=[],ys=[]; for(var i=0;i<idx.length;i++){xs.push(xData[idx[i]]); ys.push(yData[idx[i]]);} if(xs.length<minimumSamples(modelType))return null; var coefficients=null; if(modelType==="linear")coefficients=linearCoefficients(xs,ys); else if(modelType==="quadratic")coefficients=polynomialCoefficients(xs,ys,2); else if(modelType==="cubic")coefficients=polynomialCoefficients(xs,ys,3); else if(modelType==="exponential"){var ly=[]; for(var e=0;e<ys.length;e++)ly.push(Math.log(ys[e])); var ec=linearCoefficients(xs,ly); if(ec)coefficients=[Math.exp(ec[1]),ec[0]];} else if(modelType==="logarithmic"){var lx=[]; for(var l=0;l<xs.length;l++)lx.push(Math.log(xs[l])); coefficients=linearCoefficients(lx,ys);} else if(modelType==="power"){var plx=[],ply=[]; for(var p=0;p<xs.length;p++){plx.push(Math.log(xs[p])); ply.push(Math.log(ys[p]));} var pc=linearCoefficients(plx,ply); if(pc)coefficients=[Math.exp(pc[1]),pc[0]];} if(!coefficients)return null; var n=xs.length,mean=0; for(var m=0;m<n;m++)mean+=ys[m]; mean/=n; var sse=0,sst=0; for(var q=0;q<n;q++){var pred=predictModel(modelType,coefficients,xs[q]); if(!isFinite(pred))return null; var err=ys[q]-pred; sse+=err*err; var dy=ys[q]-mean; sst+=dy*dy;} var r2=sst===0?1:1-sse/sst,rmse=Math.sqrt(sse/n),pCount=parameterCount(modelType),adjusted=NaN; if(n-pCount-1>0)adjusted=1-((1-r2)*(n-1)/(n-pCount-1)); return {modelType:modelType,coefficients:coefficients,validIndexes:idx,n:n,r2:r2,adjustedR2:adjusted,rmse:rmse};}
+  function scaleCoefficientsForRatio(modelType,coefficients){var out=coefficients.slice(); if(modelType==="exponential"||modelType==="power"){out[0]=out[0]/100;} else {for(var i=0;i<out.length;i++)out[i]=out[i]/100;} return out;}
+  function signedTerm(coef,label,isFirst){if(!isFinite(coef)||Math.abs(coef)<1e-12)return ""; var sign=coef<0?"-":"+"; var text=fmtCoef(Math.abs(coef),10)+(label||""); return isFirst?(coef<0?"- "+text:text):(" "+sign+" "+text);}
+  function polynomialEquation(coefficients,labels){var parts=[]; for(var i=0;i<coefficients.length;i++){var term=signedTerm(coefficients[i],labels[i],parts.length===0); if(term)parts.push(term);} return parts.length?parts.join(""):"0";}
+  function formatEquation(modelType,coefficients,ratioScale){var c=ratioScale?scaleCoefficientsForRatio(modelType,coefficients):coefficients.slice(); if(modelType==="linear")return "y = "+polynomialEquation(c,["x",""]); if(modelType==="quadratic")return "y = "+polynomialEquation(c,["x²","x",""]); if(modelType==="cubic")return "y = "+polynomialEquation(c,["x³","x²","x",""]); if(modelType==="exponential")return "y = "+fmtCoef(c[0],10)+" * e^("+fmtCoef(c[1],10)+"x)"; if(modelType==="logarithmic")return "y = "+polynomialEquation([c[0],c[1]],[" * ln(x)",""]); if(modelType==="power")return "y = "+fmtCoef(c[0],10)+" * x^"+fmtCoef(c[1],10); return "";}
+  function csvCell(v){var s=String(v===undefined||v===null?"":v); return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+  function baseResult(item,modelType,usedTypeText,error,n){var bd=item.bandDef; return {key:bd.key,band:bd.band,name:bd.name,enviVar:bd.enviVar,dnCol:item.dnCol,refCol:item.refCol,modelType:modelType,modelName:getModelName(modelType),coefficients:null,n:n||0,xs:[],ys:[],labels:[],sourceUnit:item.sourceUnit,r2:NaN,adjustedR2:NaN,rmse:NaN,usedTypes:usedTypeText,error:error||"",isBest:false,compareMode:false};}
+  function resultFromFit(item,modelType,fit,usedTypeText){var out=baseResult(item,modelType,usedTypeText,"",fit.n); out.coefficients=fit.coefficients; out.r2=fit.r2; out.adjustedR2=fit.adjustedR2; out.rmse=fit.rmse; for(var vi=0;vi<fit.validIndexes.length;vi++){var oi=fit.validIndexes[vi]; out.xs.push(item.xs[oi]); out.ys.push(item.ys[oi]); out.labels.push(item.labels[oi]);} return out;}
+  function betterModel(a,b){if(!a)return b; if(!b)return a; var rmseDiff=a.rmse-b.rmse; if(Math.abs(rmseDiff)>1e-12)return rmseDiff<0?a:b; var aa=isFinite(a.adjustedR2)?a.adjustedR2:-Infinity,ba=isFinite(b.adjustedR2)?b.adjustedR2:-Infinity; return aa>=ba?a:b;}
+  function diagnosticResults(){var compare=modelResults.some(function(r){return r.compareMode;}); if(compare)return modelResults.filter(function(r){return r.isBest&&!r.error;}); return modelResults.filter(function(r){return !r.error;});}
+  function computeModels(){if(!currentRows.length){setStatus("请先上传表格。","warn");return;} var selectedModel=getModelType(),compareAll=selectedModel==="compare_all"; var typeCol=el("typeCol").value; var selectedTypes=getSelectedTypes(); if(typeCol&&selectedTypes&&selectedTypes.length===0){setStatus("请至少选择一种地物参与回归。","warn");return;} var issues=[],pending=[]; var usedTypeText=typeCol&&selectedTypes?selectedTypes.join("、"):"全部样本"; for(var i=0;i<bandDefs.length;i++){var b=bandDefs[i],dnCol=el(b.dnId).value,refCol=el(b.refId).value; if(!dnCol||!refCol){issues.push(b.band+" 未选择完整的 DN 列和反射率列");continue;} var xs=[],rawYs=[],labels=[]; for(var r=0;r<currentRows.length;r++){var label=typeCol?String(currentRows[r][typeCol]||"未命名样本").trim():("样本"+(r+1)); if(!label)label="未命名样本"; if(typeCol&&selectedTypes&&selectedTypes.indexOf(label)<0)continue; var x=parseNumber(currentRows[r][dnCol]),y=parseNumber(currentRows[r][refCol]); if(isFinite(x)&&isFinite(y)){xs.push(x);rawYs.push(y);labels.push(label);}} var conv=convertReflectance(rawYs),ys=conv.values; if(!compareAll){var validCount=validIndexesForModel(xs,ys,selectedModel).length; if(validCount<minimumSamples(selectedModel)){var msg=sampleAlertMessage(selectedModel); alert(msg); setStatus(b.band+" "+msg+"。","warn"); return;}} pending.push({bandDef:b,dnCol:dnCol,refCol:refCol,xs:xs,ys:ys,labels:labels,sourceUnit:conv.sourceUnit});} if(!pending.length){setStatus("没有可计算的波段。"+(issues.length?"问题："+issues.join("；"):""),"err");return;} var nextResults=[],successCount=0,modelTypes=compareAll?allModelTypes:[selectedModel]; for(var p=0;p<pending.length;p++){var item=pending[p],bandResults=[],best=null; for(var mt=0;mt<modelTypes.length;mt++){var mtName=modelTypes[mt],valid=validIndexesForModel(item.xs,item.ys,mtName).length,result=null; if(valid<minimumSamples(mtName)){result=baseResult(item,mtName,usedTypeText,sampleAlertMessage(mtName),valid);} else {var fit=fitModel(item.xs,item.ys,mtName); if(fit)result=resultFromFit(item,mtName,fit,usedTypeText); else result=baseResult(item,mtName,usedTypeText,"有效样本不足、DN 值没有变化或矩阵不可解",valid);} result.compareMode=compareAll; bandResults.push(result); if(!result.error){successCount++; best=betterModel(best,result);}} if(compareAll&&best){for(var br=0;br<bandResults.length;br++){if(bandResults[br]===best)bandResults[br].isBest=true;}} if(compareAll&&!best)issues.push(item.bandDef.band+" 没有任何模型成功拟合"); for(var add=0;add<bandResults.length;add++)nextResults.push(bandResults[add]);} if(!successCount){setStatus("没有成功计算任何波段模型。"+(issues.length?"问题："+issues.join("；"):""),"err");return;} modelResults=nextResults; renderResults(); drawAllCharts(); showCard("resultCard"); showCard("chartCard"); var modeText=compareAll?"自动对比全部模型":getModelName(selectedModel); setStatus(modeText+"计算完成。参与回归的地物类型："+usedTypeText+"。成功计算 "+successCount+" 个模型结果。"+(issues.length?" 注意："+issues.join("；"):""), issues.length?"warn":"ok");}
+  function renderResults(){
+    var body="",metrics="",outRows="";
+    var compare=modelResults.some(function(r){return r.compareMode;});
+    var diag=diagnosticResults();
+
+    if(compare){
+      for(var gi=0;gi<modelResults.length;){
+        var group=[],gkey=modelResults[gi].key;
+        while(gi<modelResults.length&&modelResults[gi].key===gkey){group.push(modelResults[gi]); gi++;}
+        for(var gr=0;gr<group.length;gr++){
+          var row=group[gr],eq=row.error?('<span class="err">'+escapeHtml(row.error)+'</span>'):escapeHtml(formatEquation(row.modelType,row.coefficients,true));
+          body+='<tr'+(row.isBest?' class="best-model-row"':'')+'>';
+          if(gr===0){body+='<td rowspan="'+group.length+'">'+row.band+'</td><td rowspan="'+group.length+'">'+row.name+'</td>';}
+          body+='<td>'+row.modelName+(row.isBest?'<span class="besttag">最优</span>':'')+'</td>';
+          body+='<td>'+row.n+'</td><td>'+eq+'</td><td>'+fmt(row.r2,4)+'</td><td>'+fmtMaybe(row.adjustedR2,4)+'</td><td>'+fmt(row.rmse,4)+'</td></tr>';
+        }
+      }
+    } else {
+      for(var i=0;i<modelResults.length;i++){
+        var r=modelResults[i];
+        var eqRatio=formatEquation(r.modelType,r.coefficients,true);
+
+        body+="<tr><td>"+r.band+"</td><td>"+r.name+"</td><td>"+r.modelName+"</td><td>"+r.n+"</td><td>"+escapeHtml(eqRatio)+"</td><td>"+fmt(r.r2,4)+"</td><td>"+fmtMaybe(r.adjustedR2,4)+"</td><td>"+fmt(r.rmse,4)+"</td></tr>";
+      }
+    }
+
+    for(var mi=0;mi<diag.length;mi++){
+      var mr=diag[mi],metricEq=formatEquation(mr.modelType,mr.coefficients,true);
+      metrics+='<div class="metric"><div class="name">'+mr.band+" "+mr.name+" · "+mr.modelName+(compare?"（最优）":"")+'</div><div class="val">R² = '+fmt(mr.r2,4)+'</div><div class="small">调整后 R² = '+fmtMaybe(mr.adjustedR2,4)+'<br>'+escapeHtml(metricEq)+'</div></div>';
+    }
+
+    for(var di=0;di<diag.length;di++){
+      var r=diag[di];
+      for(var j=0;j<r.xs.length;j++){
+        var pred=predictModel(r.modelType,r.coefficients,r.xs[j]);
+        var residual=r.ys[j]-pred;
+        var std=r.rmse>0?residual/r.rmse:0;
+        var bad=Math.abs(std)>=1.5;
+        outRows+='<tr'+(bad?' style="background:#fff7ed;"':'')+'>';
+        outRows+='<td>'+r.band+'</td>';
+        outRows+='<td>'+escapeHtml(r.labels[j])+'</td>';
+        outRows+='<td>'+fmt(r.xs[j],4)+'</td>';
+        outRows+='<td>'+fmt(r.ys[j],4)+'</td>';
+        outRows+='<td>'+fmt(pred,4)+'</td>';
+        outRows+='<td>'+fmt(residual,4)+'</td>';
+        outRows+='<td>'+fmt(std,3)+'</td>';
+        outRows+='<td>'+(bad?'<span class="warn">疑似异常</span>':'正常')+'</td>';
+        outRows+='</tr>';
+      }
+    }
+
+    el("resultBody").innerHTML=body;
+    el("metrics").innerHTML=metrics;
+    if(el("outlierBody")) el("outlierBody").innerHTML=outRows;
+  }
+
+  function clearChartByKey(key){var canvas=el("chart_"+key); if(!canvas)return; var ctx=canvas.getContext("2d"); ctx.clearRect(0,0,canvas.width,canvas.height); ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,canvas.width,canvas.height);}
+  function drawAllCharts(){for(var b=0;b<bandDefs.length;b++)clearChartByKey(bandDefs[b].key); var rows=diagnosticResults(); for(var i=0;i<rows.length;i++)drawChart(rows[i]);}
+  function drawChart(r){
+    var canvas=el("chart_"+r.key); if(!canvas)return;
+    var ctx=canvas.getContext("2d"),w=canvas.width,h=canvas.height;
+    ctx.clearRect(0,0,w,h); ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,w,h);
+
+    var left=66,right=24,top=24,bottom=50;
+    var pw=w-left-right,ph=h-top-bottom;
+
+    if(!r.xs.length||!r.coefficients)return;
+    var minX=Math.min.apply(null,r.xs),maxX=Math.max.apply(null,r.xs);
+    var minY=Math.min.apply(null,r.ys),maxY=Math.max.apply(null,r.ys);
+    if(minX===maxX){minX-=1;maxX+=1;} if(minY===maxY){minY-=1;maxY+=1;}
+    var padX=(maxX-minX)*0.14,padY=(maxY-minY)*0.22;
+    minX-=padX; maxX+=padX; minY=Math.max(0,minY-padY); maxY=maxY+padY;
+    var steps=50,bandPoints=[];
+    for(var bp=0;bp<=steps;bp++){
+      var bx=minX+(maxX-minX)*bp/steps,by=predictModel(r.modelType,r.coefficients,bx);
+      if(!isFinite(by))continue;
+      var upper=by+1.96*r.rmse,lower=Math.max(0,by-1.96*r.rmse);
+      bandPoints.push({x:bx,y:by,upper:upper,lower:lower});
+      minY=Math.min(minY,lower); maxY=Math.max(maxY,upper);
+    }
+    if(maxY-minY<5){var mid=(maxY+minY)/2; minY=Math.max(0,mid-2.5); maxY=mid+2.5;}
+
+    function xMap(x){return left+(x-minX)/(maxX-minX)*pw;}
+    function yMap(y){return top+(maxY-y)/(maxY-minY)*ph;}
+
+    ctx.strokeStyle="#e5e7eb"; ctx.lineWidth=1; ctx.fillStyle="#64748b"; ctx.font="12px Arial";
+    for(var gx=0;gx<=5;gx++){
+      var xv=minX+(maxX-minX)*gx/5,xx=xMap(xv);
+      ctx.beginPath();ctx.moveTo(xx,top);ctx.lineTo(xx,top+ph);ctx.stroke();
+      ctx.textAlign="center";ctx.fillText(xv.toFixed(0),xx,top+ph+22);
+    }
+    for(var gy=0;gy<=5;gy++){
+      var yv=minY+(maxY-minY)*gy/5,yy=yMap(yv);
+      ctx.beginPath();ctx.moveTo(left,yy);ctx.lineTo(left+pw,yy);ctx.stroke();
+      ctx.textAlign="right";ctx.fillText((maxY-minY<10?yv.toFixed(1):yv.toFixed(0)),left-8,yy+4);
+    }
+
+    ctx.strokeStyle="#111827"; ctx.lineWidth=1.2;
+    ctx.beginPath();ctx.moveTo(left,top);ctx.lineTo(left,top+ph);ctx.lineTo(left+pw,top+ph);ctx.stroke();
+
+    ctx.save(); ctx.beginPath(); ctx.rect(left,top,pw,ph); ctx.clip();
+
+    if(bandPoints.length>1){
+      ctx.fillStyle="rgba(54, 162, 235, 0.15)";
+      ctx.beginPath();
+      for(var up=0;up<bandPoints.length;up++){
+        var pu=bandPoints[up];
+        if(up===0)ctx.moveTo(xMap(pu.x),yMap(pu.upper)); else ctx.lineTo(xMap(pu.x),yMap(pu.upper));
+      }
+      for(var lo=bandPoints.length-1;lo>=0;lo--){
+        var pl=bandPoints[lo];
+        ctx.lineTo(xMap(pl.x),yMap(pl.lower));
+      }
+      ctx.closePath(); ctx.fill();
+
+      ctx.strokeStyle="rgba(54, 162, 235, 0.55)"; ctx.lineWidth=1.2;
+      ctx.beginPath();
+      for(var ub=0;ub<bandPoints.length;ub++){var u=bandPoints[ub]; if(ub===0)ctx.moveTo(xMap(u.x),yMap(u.upper)); else ctx.lineTo(xMap(u.x),yMap(u.upper));}
+      ctx.stroke();
+      ctx.beginPath();
+      for(var lb=0;lb<bandPoints.length;lb++){var l=bandPoints[lb]; if(lb===0)ctx.moveTo(xMap(l.x),yMap(l.lower)); else ctx.lineTo(xMap(l.x),yMap(l.lower));}
+      ctx.stroke();
+
+      ctx.strokeStyle="#dc2626"; ctx.lineWidth=2;
+      ctx.beginPath();
+      for(var cp=0;cp<bandPoints.length;cp++){
+        var cpt=bandPoints[cp];
+        if(cp===0)ctx.moveTo(xMap(cpt.x),yMap(cpt.y)); else ctx.lineTo(xMap(cpt.x),yMap(cpt.y));
+      }
+      ctx.stroke();
+    }
+
+    for(var i=0;i<r.xs.length;i++){
+      var pred=predictModel(r.modelType,r.coefficients,r.xs[i]);
+      var residual=r.ys[i]-pred;
+      var std=r.rmse>0?residual/r.rmse:0;
+      var bad=Math.abs(std)>=1.5;
+      var px=xMap(r.xs[i]),py=yMap(r.ys[i]);
+      ctx.beginPath(); ctx.arc(px,py,bad?5.8:4.6,0,Math.PI*2);
+      ctx.fillStyle="#2563eb"; ctx.fill();
+      if(bad){ctx.lineWidth=2.4; ctx.strokeStyle="#f97316"; ctx.stroke();}
+    }
+
+    for(var j=0;j<r.xs.length;j++){
+      var pred2=predictModel(r.modelType,r.coefficients,r.xs[j]);
+      var residual2=r.ys[j]-pred2;
+      var std2=r.rmse>0?residual2/r.rmse:0;
+      var bad2=Math.abs(std2)>=1.5;
+      var px2=xMap(r.xs[j]),py2=yMap(r.ys[j]);
+      var tx=px2+7,ty=py2-9;
+      if(tx>left+pw-80) tx=px2-64;
+      if(ty<top+9) ty=py2+13;
+      if(ty>top+ph-8) ty=py2-13;
+      var label=String(r.labels[j]||("样本"+(j+1)));
+      if(label.length>8) label=label.slice(0,8);
+      ctx.textAlign="left"; ctx.textBaseline="middle";
+      ctx.font=bad2?"bold 11px Arial":"11px Arial";
+      ctx.lineWidth=3; ctx.strokeStyle="rgba(255,255,255,0.96)";
+      ctx.strokeText(label,tx,ty);
+      ctx.fillStyle=bad2?"#ea580c":"#334155";
+      ctx.fillText(label,tx,ty);
+    }
+    ctx.restore();
+
+    ctx.fillStyle="#111827"; ctx.font="13px Arial"; ctx.textAlign="center";
+    ctx.fillText("DN",left+pw/2,h-10);
+    ctx.save();ctx.translate(16,top+ph/2+42);ctx.rotate(-Math.PI/2);ctx.fillText("Reflectance / %",0,0);ctx.restore();
+
+    ctx.fillStyle="#475569"; ctx.font="12px Arial"; ctx.textAlign="left";
+    ctx.fillText("R²="+fmt(r.r2,4),left+8,top+16);
+    ctx.fillText("Adj R²="+fmtMaybe(r.adjustedR2,4),left+8,top+32);
+  }
+
+  function exportCSV(){
+    if(!modelResults.length){
+      setStatus("尚未计算模型，无法导出。","warn");
+      return;
+    }
+
+    var csv="Band,Name,N,DN_column,Reflectance_column,Source_reflectance_unit,ModelType,IsBest,Coefficients_percent_scale,Equation_ratio_scale,R2,Adjusted_R2,RMSE_percent,Error\n";
+
+    for(var i=0;i<modelResults.length;i++){
+      var r=modelResults[i];
+      csv+=[
+        r.band,
+        r.name,
+        r.n,
+        r.dnCol,
+        r.refCol,
+        r.sourceUnit,
+        r.modelType,
+        r.isBest?"YES":"",
+        r.coefficients?r.coefficients.map(function(c){return fmt(c,12);}).join(";"):"",
+        r.coefficients?formatEquation(r.modelType,r.coefficients,true):"",
+        fmt(r.r2,8),
+        fmtMaybe(r.adjustedR2,8),
+        fmt(r.rmse,8),
+        r.error||""
+      ].map(csvCell).join(",")+"\n";
+    }
+
+    var blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement("a");
+    a.href=url;
+    var exportMode=modelResults.some(function(r){return r.compareMode;})?"自动对比全部模型":getModelName(modelResults[0].modelType);
+    a.download=(currentFileName?currentFileName.replace(/\.[^.]+$/,""):"reflectance_model")+"_四波段"+exportMode+"校正模型.csv";
+    document.body.appendChild(a);
+    a.click();
+
+    setTimeout(function(){
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    },0);
+  }
+  function clearAll(){workbook=null;sheets={};currentRows=[];headers=[];modelResults=[];currentFileName="";el("fileInput").value="";el("sheetSelect").innerHTML="<option>请先上传文件</option>";el("sheetSelect").disabled=true;hideCard("mapCard");hideCard("typeFilterCard");hideCard("resultCard");hideCard("chartCard");hideCard("previewCard");setStatus("已清空，等待上传文件。");}
+  function bind(){el("fileInput").onchange=function(){if(!this.files||!this.files.length)return; var file=this.files[0]; currentFileName=file.name||""; var lower=currentFileName.toLowerCase(); if(lower.endsWith(".csv")||lower.endsWith(".txt"))readCSVFile(file); else readExcelFile(file);}; el("sheetSelect").onchange=function(){loadSheet(this.value);}; el("typeCol").onchange=function(){renderTypeFilter(); hideCard("resultCard"); hideCard("chartCard");}; if(el("modelType")) el("modelType").onchange=function(){hideCard("resultCard"); hideCard("chartCard");}; if(el("selectAllTypesBtn")) el("selectAllTypesBtn").onclick=function(){var checks=document.querySelectorAll(".typeFilter"); for(var i=0;i<checks.length;i++)checks[i].checked=true;}; if(el("clearAllTypesBtn")) el("clearAllTypesBtn").onclick=function(){var checks=document.querySelectorAll(".typeFilter"); for(var i=0;i<checks.length;i++)checks[i].checked=false;}; el("calcBtn").onclick=computeModels; el("exportBtn").onclick=exportCSV; el("clearBtn").onclick=clearAll;}
+  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",bind); else bind();
+})();
+</script>
+</body>
+</html>
