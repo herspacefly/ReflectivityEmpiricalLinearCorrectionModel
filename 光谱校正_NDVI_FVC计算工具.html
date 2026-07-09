@@ -1,0 +1,1618 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>光谱校正_NDVI_FVC计算工具</title>
+<script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f4f6fb;color:#172033;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",Arial,sans-serif}
+.wrap{max-width:1280px;margin:20px auto 60px;padding:0 14px}
+.card{background:#fff;border-radius:18px;box-shadow:0 10px 28px rgba(15,23,42,.08);padding:22px;margin-bottom:18px}
+h1{margin:0 0 8px;font-size:24px}
+h2{margin:0 0 14px;font-size:18px}
+.sub,.hint{color:#64748b;line-height:1.7;font-size:14px}
+.notice{margin-top:12px;padding:12px 14px;border-radius:12px;background:#f8fafc;border:1px solid #e5e7eb;color:#475569;line-height:1.7;font-size:14px;word-break:break-word}
+.ok{color:#047857;font-weight:800}.warn{color:#b45309;font-weight:800}.err{color:#b91c1c;font-weight:800}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+label{display:block;font-weight:800;font-size:14px;margin-bottom:7px;color:#334155}
+input[type=file],input[type=number],select{width:100%;padding:11px 12px;border:1px solid #d1d5db;border-radius:10px;background:#fff;outline:none;font-size:15px}
+input:focus,select:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+button{border:none;border-radius:999px;padding:11px 17px;font-size:15px;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;margin:8px 8px 0 0}
+button:active{transform:scale(.98)}button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.primary{background:#2563eb;color:#fff;font-weight:800}.secondary{background:#e5e7eb;color:#111827}.danger{background:#fee2e2;color:#991b1b}
+table{width:100%;border-collapse:collapse;border-radius:14px;overflow:hidden;margin-top:10px;font-size:14px}
+th,td{border-bottom:1px solid #e5e7eb;padding:10px;text-align:center;vertical-align:middle;white-space:nowrap}
+th{background:#f1f5f9;color:#334155;font-weight:900}td:first-child,th:first-child{text-align:left}tr:last-child td{border-bottom:none}
+  .scroll{overflow-x:auto}.coef-input{width:130px!important;text-align:center;padding:8px!important;font-size:14px!important}.model-select{min-width:150px;padding:8px 9px!important;border-radius:9px!important;font-size:14px!important}.param-cell.param-hidden .coef-input{display:none}
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:12px}
+.metric{background:#f9fafb;border:1px solid #e5e7eb;border-radius:14px;padding:14px}.metric .name{color:#64748b;font-size:13px;margin-bottom:8px}.metric .val{font-size:22px;line-height:1.35;font-weight:900;color:#111827}.metric .small{color:#64748b;margin-top:6px;line-height:1.6;font-size:12px}
+.preview-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:12px}
+.preview{border:1px solid #e5e7eb;border-radius:16px;padding:12px;background:#f8fafc}
+.preview-title{display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:900;color:#334155;margin-bottom:10px}
+canvas{width:100%;height:auto;max-height:none;border:1px solid #e5e7eb;border-radius:12px;background:#fff;image-rendering:auto;display:block}
+.control-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}.composite-controls{display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px}.channel-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.control-row.single{grid-template-columns:1fr}
+.control-row .mini-label{font-size:12px;font-weight:800;color:#64748b;margin-bottom:4px}
+.control-row select{font-size:13px;padding:8px 9px;border-radius:9px}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;font-size:12px;color:#475569}
+.legend-item{display:inline-flex;align-items:center;gap:5px;padding:4px 7px;border-radius:999px;background:#fff;border:1px solid #e5e7eb}
+.swatch{width:14px;height:14px;border-radius:4px;display:inline-block;border:1px solid rgba(0,0,0,.12)}
+
+.pixel-tooltip{
+  position:fixed;
+  z-index:9999;
+  pointer-events:none;
+  display:none;
+  max-width:320px;
+  padding:9px 11px;
+  border-radius:10px;
+  background:rgba(15,23,42,.92);
+  color:#fff;
+  font-size:12px;
+  line-height:1.55;
+  box-shadow:0 8px 22px rgba(15,23,42,.25);
+  backdrop-filter:blur(6px);
+}
+.pixel-tooltip b{color:#bfdbfe}
+.pixel-tooltip .muted{color:#cbd5e1}
+
+.hidden{display:none}
+@media (max-width:900px){
+  .wrap{margin:12px auto 40px}.card{padding:16px;border-radius:16px}h1{font-size:21px}
+  .grid,.grid4,.metrics,.preview-grid,.control-row,.channel-row{grid-template-columns:1fr}
+  button{width:100%;margin-right:0}.coef-input{width:100%!important}th,td{padding:8px;font-size:13px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>光谱校正_NDVI_FVC计算工具</h1>
+    <div class="sub">输入一个四波段 TIF：Band 1 = 蓝光，Band 2 = 绿光，Band 3 = 红光，Band 4 = 近红外。工具在浏览器本地完成光谱校正、NDVI、FVC 与预览。</div>
+    <div class="notice">FVC 阈值计算严格使用 <b>NDVI 在 0–1 范围内的像素</b>：先筛选有效 NDVI，再统计 5% 和 95% 分位值，0–1 范围外的 NDVI 不参与统计。</div>
+    <div class="grid" style="margin-top:16px">
+      <div>
+        <label for="tifInput">上传四波段 TIF / TIFF</label>
+        <input id="tifInput" type="file" accept=".tif,.tiff,image/tiff" />
+      </div>
+      <div>
+        <label>预览说明</label>
+        <div class="notice" style="margin-top:0">预览自动保持影像长宽比。在“原始 RGB 预览”中按住鼠标左键拖拽，即可拉框选取显示范围。</div>
+      </div>
+    </div>
+    <button id="readBtn" class="primary" type="button">读取影像</button>
+    <button id="clearBtn" class="danger" type="button">清空</button>
+    <div id="status" class="notice">尚未读取影像。</div>
+  </div>
+
+  <div class="card">
+    <h2>光谱校正系数</h2>
+    <div class="sub">校正模型可按波段选择：线性、二次/三次多项式、指数、对数或幂函数。若影像已经是 0–1 反射率，可选择线性并将 a 设为 1，b 设为 0。</div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>波段</th><th>含义</th><th>模型类型</th><th>参数 a</th><th>参数 b</th><th>参数 c</th><th>参数 d</th></tr></thead>
+        <tbody>
+          <tr data-band="B"><td>Band 1</td><td>蓝光 Blue</td><td><select id="modelB" class="model-select"><option value="linear" selected>线性</option><option value="quadratic">二次多项式</option><option value="cubic">三次多项式</option><option value="exponential">指数</option><option value="logarithmic">对数</option><option value="power">幂函数</option></select></td><td class="param-cell param-a"><input id="aB" class="coef-input" type="number" step="any" value="1"></td><td class="param-cell param-b"><input id="bB" class="coef-input" type="number" step="any" value="0"></td><td class="param-cell param-c"><input id="cB" class="coef-input" type="number" step="any" value="0"></td><td class="param-cell param-d"><input id="dB" class="coef-input" type="number" step="any" value="0"></td></tr>
+          <tr data-band="G"><td>Band 2</td><td>绿光 Green</td><td><select id="modelG" class="model-select"><option value="linear" selected>线性</option><option value="quadratic">二次多项式</option><option value="cubic">三次多项式</option><option value="exponential">指数</option><option value="logarithmic">对数</option><option value="power">幂函数</option></select></td><td class="param-cell param-a"><input id="aG" class="coef-input" type="number" step="any" value="1"></td><td class="param-cell param-b"><input id="bG" class="coef-input" type="number" step="any" value="0"></td><td class="param-cell param-c"><input id="cG" class="coef-input" type="number" step="any" value="0"></td><td class="param-cell param-d"><input id="dG" class="coef-input" type="number" step="any" value="0"></td></tr>
+          <tr data-band="R"><td>Band 3</td><td>红光 Red</td><td><select id="modelR" class="model-select"><option value="linear" selected>线性</option><option value="quadratic">二次多项式</option><option value="cubic">三次多项式</option><option value="exponential">指数</option><option value="logarithmic">对数</option><option value="power">幂函数</option></select></td><td class="param-cell param-a"><input id="aR" class="coef-input" type="number" step="any" value="1"></td><td class="param-cell param-b"><input id="bR" class="coef-input" type="number" step="any" value="0"></td><td class="param-cell param-c"><input id="cR" class="coef-input" type="number" step="any" value="0"></td><td class="param-cell param-d"><input id="dR" class="coef-input" type="number" step="any" value="0"></td></tr>
+          <tr data-band="N"><td>Band 4</td><td>近红外 NIR</td><td><select id="modelN" class="model-select"><option value="linear" selected>线性</option><option value="quadratic">二次多项式</option><option value="cubic">三次多项式</option><option value="exponential">指数</option><option value="logarithmic">对数</option><option value="power">幂函数</option></select></td><td class="param-cell param-a"><input id="aN" class="coef-input" type="number" step="any" value="1"></td><td class="param-cell param-b"><input id="bN" class="coef-input" type="number" step="any" value="0"></td><td class="param-cell param-c"><input id="cN" class="coef-input" type="number" step="any" value="0"></td><td class="param-cell param-d"><input id="dN" class="coef-input" type="number" step="any" value="0"></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <input id="coefCsvInput" type="file" accept=".csv,text/csv" style="display:none">
+    <button id="importCoefBtn" class="secondary" type="button">导入模型系数 CSV</button>
+    <button id="runBtn" class="primary" type="button" disabled>执行光谱校正、NDVI 与 FVC</button>
+    <button id="identityBtn" class="secondary" type="button">设为不校正：a=1, b=0</button>
+    <button id="clearCoefBtn" class="secondary" type="button">清空系数</button>
+  </div>
+
+  <div id="resultCard" class="card hidden">
+    <h2>统计结果</h2>
+    <div class="metrics">
+      <div class="metric"><div class="name">有效 NDVI 像素数</div><div id="validCount" class="val">--</div><div class="small">仅统计 0–1 范围内像素</div></div>
+      <div class="metric"><div class="name">NDVI 5% 分位值</div><div id="p5Val" class="val">--</div><div class="small">低植被端元阈值</div></div>
+      <div class="metric"><div class="name">NDVI 95% 分位值</div><div id="p95Val" class="val">--</div><div class="small">高植被端元阈值</div></div>
+      <div class="metric"><div class="name">FVC 有效像素比例</div><div id="fvcRatio" class="val">--</div><div class="small">有效 NDVI 像素 / 总像素</div></div>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>等级值</th><th>类型</th><th>FVC 范围</th><th>像素数</th><th>占有效 FVC 比例</th></tr></thead>
+        <tbody id="classStats"></tbody>
+      </table>
+    </div>
+    <button id="exportStatsBtn" class="secondary" type="button">导出统计 CSV</button>
+    <button id="downloadNdviPngBtn" class="secondary" type="button">下载 NDVI 预览 PNG</button>
+    <button id="downloadFvcPngBtn" class="secondary" type="button">下载 FVC 分级 PNG</button>
+  </div>
+
+  <div id="pixelTooltip" class="pixel-tooltip"></div>
+
+  <div id="previewCard" class="card hidden">
+    <h2>影像预览</h2>
+    <div class="notice">
+      拉框方式：在原始影像上按住鼠标左键拖拽，松开后所有预览图都会缩放到框选范围。统计结果仍基于整幅影像计算，框选只影响预览显示范围。
+      <button id="resetCropBtn" class="secondary" type="button" style="margin-left:8px">恢复全图预览</button>
+    </div>
+    <div id="cropInfo" class="notice">当前显示范围：全图。</div>
+
+    <div class="preview-grid">
+      <div class="preview">
+        <div class="preview-title">原始 RGB 预览</div>
+        <canvas id="rawCanvas"></canvas>
+        <div class="composite-controls">
+          <div><div class="mini-label">合成方式</div><select id="rawPreset"></select></div>
+          <div class="channel-row">
+            <div><div class="mini-label">R 通道</div><select id="rawRBand"></select></div>
+            <div><div class="mini-label">G 通道</div><select id="rawGBand"></select></div>
+            <div><div class="mini-label">B 通道</div><select id="rawBBand"></select></div>
+          </div>
+        </div>
+        <div class="hint">默认真彩色 R=Band 3，G=Band 2，B=Band 1；可切换为假彩色或自定义波段组合。</div>
+      </div>
+
+      <div class="preview">
+        <div class="preview-title">光谱校正后 RGB 预览</div>
+        <canvas id="correctedCanvas"></canvas>
+        <div class="composite-controls">
+          <div><div class="mini-label">合成方式</div><select id="corrPreset"></select></div>
+          <div class="channel-row">
+            <div><div class="mini-label">R 通道</div><select id="corrRBand"></select></div>
+            <div><div class="mini-label">G 通道</div><select id="corrGBand"></select></div>
+            <div><div class="mini-label">B 通道</div><select id="corrBBand"></select></div>
+          </div>
+        </div>
+        <div class="hint">默认真彩色，可切换为标准假彩色 R=Band 4，G=Band 3，B=Band 2。</div>
+      </div>
+
+      <div class="preview">
+        <div class="preview-title">NDVI 预览</div>
+        <canvas id="ndviCanvas"></canvas>
+        <div class="control-row single">
+          <div><div class="mini-label">NDVI 设色</div><select id="ndviScheme"></select></div>
+        </div>
+        <div id="ndviLegend" class="legend"></div>
+      </div>
+
+      <div class="preview">
+        <div class="preview-title">FVC 分级预览</div>
+        <canvas id="fvcCanvas"></canvas>
+        <div class="control-row single">
+          <div><div class="mini-label">FVC 设色</div><select id="fvcScheme"></select></div>
+        </div>
+        <div id="fvcLegend" class="legend"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var PREVIEW_MAX_SIDE = 1400;
+  var imageData = null;
+  var result = null;
+  var cropRegion = null;
+  var isSelecting = false;
+  var selectStart = null;
+  var selectEnd = null;
+
+  var preview = {
+    width: 0, height: 0, step: 1, crop: null,
+    rawB: null, rawG: null, rawR: null, rawN: null,
+    corrB: null, corrG: null, corrR: null, corrN: null,
+    ndvi: null, fvc: null, fvcClass: null
+  };
+
+  var bandOptions = [
+    { value: "B", text: "Band 1 蓝光" },
+    { value: "G", text: "Band 2 绿光" },
+    { value: "R", text: "Band 3 红光" },
+    { value: "N", text: "Band 4 近红外" }
+  ];
+
+  var compositePresets = [
+    { value: "true", text: "真彩色 3-2-1", bands: ["R", "G", "B"] },
+    { value: "false", text: "标准假彩色 4-3-2", bands: ["N", "R", "G"] },
+    { value: "veg", text: "植被增强 4-2-1", bands: ["N", "G", "B"] },
+    { value: "urban", text: "城市/裸地 3-4-2", bands: ["R", "N", "G"] },
+    { value: "custom", text: "自定义", bands: null }
+  ];
+
+  function el(id) { return document.getElementById(id); }
+
+  function setStatus(msg, type) {
+    var cls = type === "ok" ? "ok" : (type === "warn" ? "warn" : (type === "err" ? "err" : ""));
+    el("status").innerHTML = cls ? '<span class="' + cls + '">' + msg + '</span>' : msg;
+  }
+
+  function show(id) { var n = el(id); if (n) n.classList.remove("hidden"); }
+  function hide(id) { var n = el(id); if (n) n.classList.add("hidden"); }
+
+  function num(v, fallback) {
+    var n = Number(v);
+    return isFinite(n) ? n : fallback;
+  }
+
+  function fmt(x, n) {
+    return isFinite(x) ? Number(x).toFixed(n) : "--";
+  }
+
+  function pct(x) {
+    return isFinite(x) ? (x * 100).toFixed(2) + "%" : "--";
+  }
+
+  var BAND_KEYS = ["B", "G", "R", "N"];
+  var MODEL_NAMES = {
+    linear: "线性",
+    quadratic: "二次多项式",
+    cubic: "三次多项式",
+    exponential: "指数",
+    logarithmic: "对数",
+    power: "幂函数"
+  };
+  var MODEL_PARAMS = {
+    linear: ["a", "b"],
+    quadratic: ["a", "b", "c"],
+    cubic: ["a", "b", "c", "d"],
+    exponential: ["a", "b"],
+    logarithmic: ["a", "b"],
+    power: ["a", "b"]
+  };
+
+  function modelParams(type) {
+    return MODEL_PARAMS[type] || MODEL_PARAMS.linear;
+  }
+
+  function coeff() {
+    var out = {};
+    BAND_KEYS.forEach(function (k) {
+      var typeNode = el("model" + k);
+      out[k] = {
+        model: typeNode ? typeNode.value : "linear",
+        a: num(el("a" + k).value, NaN),
+        b: num(el("b" + k).value, NaN),
+        c: num(el("c" + k).value, NaN),
+        d: num(el("d" + k).value, NaN)
+      };
+    });
+    return out;
+  }
+
+  function coeffOK(c) {
+    return BAND_KEYS.every(function (k) {
+      var cfg = c[k];
+      if (!cfg || !MODEL_PARAMS[cfg.model]) return false;
+      return modelParams(cfg.model).every(function (name) {
+        return isFinite(cfg[name]);
+      });
+    });
+  }
+
+  function predictReflectance(x, cfg) {
+    x = Number(x);
+    if (!cfg || !isFinite(x)) return NaN;
+    var y;
+    if (cfg.model === "linear") {
+      y = cfg.a * x + cfg.b;
+    } else if (cfg.model === "quadratic") {
+      y = cfg.a * x * x + cfg.b * x + cfg.c;
+    } else if (cfg.model === "cubic") {
+      y = cfg.a * x * x * x + cfg.b * x * x + cfg.c * x + cfg.d;
+    } else if (cfg.model === "exponential") {
+      y = cfg.a * Math.exp(cfg.b * x);
+    } else if (cfg.model === "logarithmic") {
+      y = x > 0 ? cfg.a * Math.log(x) + cfg.b : 0;
+    } else if (cfg.model === "power") {
+      if (x === 0 && cfg.b < 0) return 0;
+      y = cfg.a * Math.pow(x, cfg.b);
+    } else {
+      y = NaN;
+    }
+    return isFinite(y) ? y : NaN;
+  }
+
+  function sanitizeReflectance(v) {
+    if (!isFinite(v)) return NaN;
+    if (v < 0) return 0;
+    if (v > 1) return 1;
+    return v;
+  }
+
+  function correctReflectance(x, cfg) {
+    return sanitizeReflectance(predictReflectance(x, cfg));
+  }
+
+  function updateModelParamsForBand(k) {
+    var row = document.querySelector('tr[data-band="' + k + '"]');
+    var modelNode = el("model" + k);
+    if (!row || !modelNode) return;
+    var needed = modelParams(modelNode.value);
+    ["a", "b", "c", "d"].forEach(function (name) {
+      var cell = row.querySelector(".param-" + name);
+      var input = el(name + k);
+      var visible = needed.indexOf(name) >= 0;
+      if (cell) cell.classList.toggle("param-hidden", !visible);
+      if (input) input.disabled = !visible;
+    });
+  }
+
+  function updateAllModelParams() {
+    BAND_KEYS.forEach(updateModelParamsForBand);
+  }
+
+  function parseCsv(text) {
+    text = String(text || "").replace(/^\ufeff/, "");
+    var rows = [];
+    var row = [];
+    var field = "";
+    var inQuotes = false;
+
+    for (var i = 0; i < text.length; i++) {
+      var ch = text[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') {
+            field += '"';
+            i++;
+          } else {
+            inQuotes = false;
+          }
+        } else {
+          field += ch;
+        }
+      } else if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ",") {
+        row.push(field);
+        field = "";
+      } else if (ch === "\n") {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = "";
+      } else if (ch !== "\r") {
+        field += ch;
+      }
+    }
+    if (field !== "" || row.length) {
+      row.push(field);
+      rows.push(row);
+    }
+    return rows.filter(function (r) {
+      return r.some(function (v) { return String(v).trim() !== ""; });
+    });
+  }
+
+  var HEADER_ALIASES = {
+    band: ["Band", "波段"],
+    name: ["Name", "含义", "名称", "波段名称"],
+    modelType: ["ModelType", "模型类型", "校正模型类型", "最佳模型"],
+    isBest: ["IsBest", "是否最佳", "最佳", "最佳模型标记"],
+    coefficients: ["Coefficients_percent_scale", "Coefficients", "系数", "模型系数", "校正系数", "最佳模型系数"],
+    adjustedR2: ["Adjusted_R2", "调整后R2", "调整后R²", "调整后决定系数"],
+    r2: ["R2", "R²", "决定系数"],
+    error: ["Error", "错误", "问题", "异常"]
+  };
+
+  function normalizeHeaderKey(v) {
+    return String(v || "")
+      .replace(/^\ufeff/, "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_\-（）()/%：:]+/g, "");
+  }
+
+  function canonicalHeaderName(header) {
+    var key = normalizeHeaderKey(header);
+    for (var canonical in HEADER_ALIASES) {
+      if (!Object.prototype.hasOwnProperty.call(HEADER_ALIASES, canonical)) continue;
+      for (var i = 0; i < HEADER_ALIASES[canonical].length; i++) {
+        if (key === normalizeHeaderKey(HEADER_ALIASES[canonical][i])) return canonical;
+      }
+    }
+    return "";
+  }
+
+  function csvObjects(text) {
+    var rows = parseCsv(text);
+    while (rows.length && /^sep\s*=/.test(String(rows[0][0] || "").trim().toLowerCase()) &&
+      rows[0].slice(1).every(function (v) { return String(v || "").trim() === ""; })) {
+      rows.shift();
+    }
+    if (rows.length < 2) return { rows: [], headers: [], missing: ["band", "modelType", "coefficients"] };
+
+    var rawHeaders = rows[0].map(function (h) { return String(h || "").replace(/^\ufeff/, "").trim(); });
+    var canonicalHeaders = rawHeaders.map(canonicalHeaderName);
+    var required = ["band", "modelType", "coefficients"];
+    var missing = required.filter(function (name) {
+      return canonicalHeaders.indexOf(name) < 0;
+    });
+
+    var objects = rows.slice(1).map(function (row) {
+      var obj = { __raw: {} };
+      rawHeaders.forEach(function (h, i) {
+        var value = row[i] == null ? "" : String(row[i]).trim();
+        obj.__raw[h] = value;
+        if (canonicalHeaders[i]) obj[canonicalHeaders[i]] = value;
+      });
+      return obj;
+    });
+
+    return { rows: objects, headers: rawHeaders, missing: missing };
+  }
+
+  function bandKeyFromModelRow(row) {
+    var text = ((row.band || "") + " " + (row.name || "")).toLowerCase();
+    if (/band\s*1/.test(text) || text.indexOf("blue") >= 0 || text.indexOf("蓝") >= 0) return "B";
+    if (/band\s*2/.test(text) || text.indexOf("green") >= 0 || text.indexOf("绿") >= 0) return "G";
+    if (/band\s*4/.test(text) || text.indexOf("nir") >= 0 || text.indexOf("近红外") >= 0) return "N";
+    if (/band\s*3/.test(text) || text.indexOf("red") >= 0 || text.indexOf("红") >= 0) return "R";
+    return "";
+  }
+
+  function normalizeModelType(value) {
+    var key = normalizeHeaderKey(value);
+    var aliases = {
+      linear: ["linear", "线性"],
+      quadratic: ["quadratic", "二次", "二次多项式"],
+      cubic: ["cubic", "三次", "三次多项式"],
+      exponential: ["exponential", "指数"],
+      logarithmic: ["logarithmic", "log", "对数"],
+      power: ["power", "幂", "幂函数"]
+    };
+    for (var model in aliases) {
+      if (!Object.prototype.hasOwnProperty.call(aliases, model)) continue;
+      for (var i = 0; i < aliases[model].length; i++) {
+        var aliasKey = normalizeHeaderKey(aliases[model][i]);
+        if (key === aliasKey || key.indexOf(aliasKey) >= 0) return model;
+      }
+    }
+    return "";
+  }
+
+  function isBestModelRow(row) {
+    var v = String(row.isBest || "").trim().toUpperCase();
+    return v === "YES" || v === "TRUE" || v === "1" || v === "最佳";
+  }
+
+  function modelRowScore(row) {
+    var adjusted = Number(row.adjustedR2);
+    var r2 = Number(row.r2);
+    if (isFinite(adjusted)) return adjusted;
+    if (isFinite(r2)) return r2;
+    return -Infinity;
+  }
+
+  function parseCoefficientList(text) {
+    return String(text || "").split(/[;；]/).map(function (v) {
+      return Number(String(v).trim());
+    }).filter(function (v) {
+      return isFinite(v);
+    });
+  }
+
+  function scaleImportedCoefficients(modelType, coefficients) {
+    var out = coefficients.slice();
+    if (modelType === "exponential" || modelType === "power") {
+      out[0] = out[0] / 100;
+    } else {
+      for (var i = 0; i < out.length; i++) out[i] = out[i] / 100;
+    }
+    return out;
+  }
+
+  function formatCoefficientInput(v) {
+    if (!isFinite(v)) return "";
+    if (v === 0) return "0";
+    var av = Math.abs(v);
+    var s = av >= 1e-6 && av < 1e8 ? v.toFixed(12) : v.toExponential(12);
+    return s.replace(/(\.\d*?[1-9])0+(e|$)/, "$1$2").replace(/\.0+(e|$)/, "$1");
+  }
+
+  function setBandModelCoefficients(k, modelType, coefficients) {
+    el("model" + k).value = modelType;
+    ["a", "b", "c", "d"].forEach(function (name, i) {
+      el(name + k).value = formatCoefficientInput(i < coefficients.length ? coefficients[i] : 0);
+    });
+    updateModelParamsForBand(k);
+  }
+
+  function pickImportedRows(rows) {
+    var picked = {};
+    rows.forEach(function (row) {
+      var k = bandKeyFromModelRow(row);
+      var modelType = normalizeModelType(row.modelType);
+      if (!k || !MODEL_PARAMS[modelType] || String(row.error || "").trim()) return;
+      row.normalizedModelType = modelType;
+      if (isBestModelRow(row)) picked[k] = row;
+    });
+
+    BAND_KEYS.forEach(function (k) {
+      if (picked[k]) return;
+      var best = null;
+      rows.forEach(function (row) {
+        var modelType = normalizeModelType(row.modelType);
+        if (bandKeyFromModelRow(row) !== k || !MODEL_PARAMS[modelType] || String(row.error || "").trim()) return;
+        row.normalizedModelType = modelType;
+        if (!best || modelRowScore(row) > modelRowScore(best)) best = row;
+      });
+      if (best) picked[k] = best;
+    });
+
+    return picked;
+  }
+
+  function bandLabel(k) {
+    if (k === "B") return "Band 1 蓝光";
+    if (k === "G") return "Band 2 绿光";
+    if (k === "R") return "Band 3 红光";
+    if (k === "N") return "Band 4 近红外";
+    return k;
+  }
+
+  function csvMissingFieldMessage(missing) {
+    var names = {
+      band: "Band/波段",
+      modelType: "ModelType/模型类型",
+      coefficients: "Coefficients_percent_scale/模型系数"
+    };
+    return missing.map(function (k) { return names[k] || k; }).join("、");
+  }
+
+  async function importCoefficientCsv(file) {
+    if (!file) return;
+    try {
+      var parsed = csvObjects(await file.text());
+      if (parsed.missing.length) {
+        var headers = parsed.headers.length ? "当前识别到的表头：" + parsed.headers.join("、") + "。" : "";
+        setStatus("导入失败：请选择第一个工具导出的模型系数 CSV，不是第二工具导出的 NDVI/FVC 统计 CSV。缺少字段：" + csvMissingFieldMessage(parsed.missing) + "。" + headers, "err");
+        return;
+      }
+
+      var rows = parsed.rows;
+      var picked = pickImportedRows(rows);
+      var missing = BAND_KEYS.filter(function (k) { return !picked[k]; });
+      if (missing.length) {
+        setStatus("导入失败：CSV 中缺少可用的模型行：" + missing.map(bandLabel).join("、") + "。请检查这些波段是否有模型类型、系数和可用的 R²/最佳标记。", "err");
+        return;
+      }
+
+      BAND_KEYS.forEach(function (k) {
+        var row = picked[k];
+        var modelType = row.normalizedModelType || normalizeModelType(row.modelType);
+        var rawCoefficients = parseCoefficientList(row.coefficients);
+        var needed = modelParams(modelType);
+        if (!row.coefficients) {
+          throw new Error((row.band || bandLabel(k)) + " 缺少 Coefficients_percent_scale 字段值；当前不支持从方程文本反推系数。");
+        }
+        if (rawCoefficients.length < needed.length) {
+          throw new Error((row.band || bandLabel(k)) + " 的系数数量不足。");
+        }
+        setBandModelCoefficients(k, modelType, scaleImportedCoefficients(modelType, rawCoefficients));
+      });
+
+      result = null;
+      hide("resultCard");
+      resetCorrectedCompositeToTrueColor();
+      clearCanvas("correctedCanvas");
+      clearCanvas("ndviCanvas");
+      clearCanvas("fvcCanvas");
+      setStatus("已导入最佳模型系数：" + file.name + "。参数已换算为 0–1 反射率尺度，请点击执行光谱校正、NDVI 与 FVC。", "ok");
+    } catch (err) {
+      setStatus("导入模型系数 CSV 失败：" + err.message, "err");
+    }
+  }
+
+  function percentileSorted(arr, p) {
+    if (!arr.length) return NaN;
+    var pos = (arr.length - 1) * p;
+    var lo = Math.floor(pos);
+    var hi = Math.ceil(pos);
+    if (lo === hi) return arr[lo];
+    var t = pos - lo;
+    return arr[lo] * (1 - t) + arr[hi] * t;
+  }
+
+  function quickPercentiles(values, lowP, highP) {
+    var arr = [];
+    for (var i = 0; i < values.length; i++) {
+      var v = values[i];
+      if (isFinite(v)) arr.push(v);
+    }
+    arr.sort(function (a, b) { return a - b; });
+    return { low: percentileSorted(arr, lowP), high: percentileSorted(arr, highP) };
+  }
+
+  function stretch(values) {
+    var ps = quickPercentiles(values, 0.02, 0.98);
+    var min = ps.low, max = ps.high;
+
+    if (!isFinite(min) || !isFinite(max) || max === min) {
+      min = Infinity; max = -Infinity;
+      for (var i = 0; i < values.length; i++) {
+        var v = values[i];
+        if (isFinite(v)) {
+          if (v < min) min = v;
+          if (v > max) max = v;
+        }
+      }
+      if (!isFinite(min) || !isFinite(max) || max === min) {
+        min = 0; max = 1;
+      }
+    }
+    return { min: min, max: max };
+  }
+
+  function s255(v, min, max) {
+    if (!isFinite(v)) return 0;
+    var x = (v - min) / (max - min);
+    if (x < 0) x = 0;
+    if (x > 1) x = 1;
+    return Math.round(x * 255);
+  }
+
+  function currentFullCrop() {
+    if (!imageData) return null;
+    return { x0: 0, y0: 0, x1: imageData.width, y1: imageData.height };
+  }
+
+  function activeCrop() {
+    return cropRegion || currentFullCrop();
+  }
+
+  function updateCropInfo() {
+    var info = el("cropInfo");
+    if (!info || !imageData) return;
+    if (!cropRegion) {
+      info.innerHTML = "当前显示范围：全图。";
+      return;
+    }
+    var w = cropRegion.x1 - cropRegion.x0;
+    var h = cropRegion.y1 - cropRegion.y0;
+    info.innerHTML = "当前显示范围：行列窗口 X=" + cropRegion.x0 + "–" + (cropRegion.x1 - 1) +
+      "，Y=" + cropRegion.y0 + "–" + (cropRegion.y1 - 1) +
+      "；范围大小 " + w + " × " + h + " 像素。";
+  }
+
+  async function readTif() {
+    var fi = el("tifInput");
+    if (!fi.files || !fi.files.length) {
+      setStatus("请先选择一个四波段 TIF 文件。", "warn");
+      return;
+    }
+    if (typeof GeoTIFF === "undefined") {
+      setStatus("GeoTIFF.js 未加载成功。请联网打开本工具，或把 GeoTIFF.js 库文件改为本地引用。", "err");
+      return;
+    }
+
+    var file = fi.files[0];
+    setStatus("正在读取 TIF，请稍候……");
+
+    try {
+      var buffer = await file.arrayBuffer();
+      var tiff = await GeoTIFF.fromArrayBuffer(buffer);
+      var img = await tiff.getImage();
+      var w = img.getWidth();
+      var h = img.getHeight();
+      var samples = img.getSamplesPerPixel();
+
+      if (samples < 4) {
+        setStatus("读取失败：该 TIF 少于 4 个波段。本工具要求 Band 1=蓝光，Band 2=绿光，Band 3=红光，Band 4=近红外。", "err");
+        return;
+      }
+
+      var rasters = await img.readRasters({ interleave: false, samples: [0, 1, 2, 3] });
+      imageData = {
+        fileName: file.name,
+        width: w,
+        height: h,
+        B: rasters[0],
+        G: rasters[1],
+        R: rasters[2],
+        N: rasters[3],
+        samples: samples
+      };
+
+      result = null;
+      cropRegion = null;
+      preparePreview();
+      drawRaw();
+      clearCanvas("correctedCanvas");
+      clearCanvas("ndviCanvas");
+      clearCanvas("fvcCanvas");
+      updateCropInfo();
+
+      el("runBtn").disabled = false;
+      hide("resultCard");
+      show("previewCard");
+      setStatus("读取成功：" + file.name + "；尺寸 " + w + " × " + h + "；波段数 " + samples + "。可在每个预览图下方选择设色方式。", "ok");
+    } catch (err) {
+      setStatus("读取 TIF 失败：" + err.message, "err");
+    }
+  }
+
+  function preparePreview() {
+    if (!imageData) return;
+    var crop = activeCrop();
+    var regionW = Math.max(1, crop.x1 - crop.x0);
+    var regionH = Math.max(1, crop.y1 - crop.y0);
+    var step = Math.ceil(Math.max(regionW / PREVIEW_MAX_SIDE, regionH / PREVIEW_MAX_SIDE, 1));
+    var pw = Math.max(1, Math.ceil(regionW / step));
+    var ph = Math.max(1, Math.ceil(regionH / step));
+    var count = pw * ph;
+
+    preview = {
+      width: pw, height: ph, step: step,
+      crop: { x0: crop.x0, y0: crop.y0, x1: crop.x1, y1: crop.y1 },
+      rawB: new Float32Array(count),
+      rawG: new Float32Array(count),
+      rawR: new Float32Array(count),
+      rawN: new Float32Array(count),
+      corrB: new Float32Array(count),
+      corrG: new Float32Array(count),
+      corrR: new Float32Array(count),
+      corrN: new Float32Array(count),
+      ndvi: new Float32Array(count),
+      fvc: new Float32Array(count),
+      fvcClass: new Int8Array(count)
+    };
+
+    var idx = 0;
+    var fullW = imageData.width;
+    for (var y = 0; y < ph; y++) {
+      var sy = crop.y0 + Math.min(y * step, regionH - 1);
+      for (var x = 0; x < pw; x++) {
+        var sx = crop.x0 + Math.min(x * step, regionW - 1);
+        var si = sy * fullW + sx;
+        preview.rawB[idx] = Number(imageData.B[si]);
+        preview.rawG[idx] = Number(imageData.G[si]);
+        preview.rawR[idx] = Number(imageData.R[si]);
+        preview.rawN[idx] = Number(imageData.N[si]);
+        preview.ndvi[idx] = NaN;
+        preview.fvc[idx] = NaN;
+        preview.fvcClass[idx] = 0;
+        idx++;
+      }
+    }
+  }
+
+  function applyCorrectionToPreview(c) {
+    for (var i = 0; i < preview.rawB.length; i++) {
+      preview.corrB[i] = correctReflectance(preview.rawB[i], c.B);
+      preview.corrG[i] = correctReflectance(preview.rawG[i], c.G);
+      preview.corrR[i] = correctReflectance(preview.rawR[i], c.R);
+      preview.corrN[i] = correctReflectance(preview.rawN[i], c.N);
+      var den = preview.corrN[i] + preview.corrR[i];
+      preview.ndvi[i] = Math.abs(den) > 1e-12 ? (preview.corrN[i] - preview.corrR[i]) / den : NaN;
+      preview.fvc[i] = NaN;
+      preview.fvcClass[i] = 0;
+    }
+  }
+
+  function applyFvcToPreview(p5, p95) {
+    for (var i = 0; i < preview.ndvi.length; i++) {
+      var nd = preview.ndvi[i];
+      if (isFinite(nd)) {
+        var f = (nd - p5) / (p95 - p5);
+        if (f < 0) f = 0;
+        if (f > 1) f = 1;
+        preview.fvc[i] = f;
+        preview.fvcClass[i] = f < 0.10 ? 1 : (f < 0.30 ? 2 : (f < 0.45 ? 3 : (f < 0.60 ? 4 : 5)));
+      } else {
+        preview.fvc[i] = NaN;
+        preview.fvcClass[i] = 0;
+      }
+    }
+  }
+
+  function runAll() {
+    if (!imageData) {
+      setStatus("请先读取影像。", "warn");
+      return;
+    }
+    var c = coeff();
+    if (!coeffOK(c)) {
+      setStatus("光谱校正参数不完整，请检查所选模型需要的参数是否都是数字。", "warn");
+      return;
+    }
+
+    setStatus("正在计算光谱校正、NDVI 和 FVC，请稍候……");
+
+    setTimeout(function () {
+      try {
+        applyCorrectionToPreview(c);
+
+        var total = imageData.width * imageData.height;
+        var valid = [];
+
+        for (var i = 0; i < total; i++) {
+          var r = correctReflectance(imageData.R[i], c.R);
+          var n = correctReflectance(imageData.N[i], c.N);
+          var d = n + r;
+          if (Math.abs(d) <= 1e-12) continue;
+          var nd = (n - r) / d;
+          if (isFinite(nd) && nd >= 0 && nd <= 1) valid.push(nd);
+        }
+
+        if (valid.length < 10) {
+          setStatus("有效 NDVI 像素过少，无法可靠统计 5% 和 95% 分位值。请检查波段顺序或光谱校正系数。", "err");
+          return;
+        }
+
+        valid.sort(function (a, b) { return a - b; });
+        var p5 = percentileSorted(valid, 0.05);
+        var p95 = percentileSorted(valid, 0.95);
+
+        if (!isFinite(p5) || !isFinite(p95) || p95 <= p5) {
+          setStatus("分位数异常：95% 分位值必须大于 5% 分位值。请检查影像和校正系数。", "err");
+          return;
+        }
+
+        var classCounts = [0, 0, 0, 0, 0, 0];
+        var validFvc = 0;
+
+        for (var j = 0; j < total; j++) {
+          var rr = correctReflectance(imageData.R[j], c.R);
+          var nn = correctReflectance(imageData.N[j], c.N);
+          var dd = nn + rr;
+          if (Math.abs(dd) <= 1e-12) continue;
+          var ndj = (nn - rr) / dd;
+          if (!isFinite(ndj)) continue;
+
+          var f = (ndj - p5) / (p95 - p5);
+          if (f < 0) f = 0;
+          if (f > 1) f = 1;
+          validFvc++;
+
+          var cls = f < 0.10 ? 1 : (f < 0.30 ? 2 : (f < 0.45 ? 3 : (f < 0.60 ? 4 : 5)));
+          classCounts[cls]++;
+        }
+
+        result = {
+          p5: p5, p95: p95, total: total,
+          validNdviCount: valid.length,
+          validFvcCount: validFvc,
+          classCounts: classCounts,
+          coefficients: c
+        };
+
+        applyFvcToPreview(p5, p95);
+        renderResults();
+        redrawAllPreviews();
+        show("resultCard");
+        show("previewCard");
+        setStatus("计算完成：已完成光谱校正、NDVI、基于整幅影像 0–1 有效 NDVI 的 5%/95% 分位统计、FVC 和 FVC 分级。", "ok");
+      } catch (e) {
+        setStatus("计算失败：" + e.message, "err");
+      }
+    }, 50);
+  }
+
+  function renderResults() {
+    if (!result) return;
+    el("validCount").innerHTML = String(result.validNdviCount);
+    el("p5Val").innerHTML = fmt(result.p5, 6);
+    el("p95Val").innerHTML = fmt(result.p95, 6);
+    el("fvcRatio").innerHTML = pct(result.validFvcCount / result.total);
+
+    var names = ["", "裸地", "低覆盖", "中低覆盖", "中覆盖", "高覆盖"];
+    var ranges = ["", "<10%", "10%–30%", "30%–45%", "45%–60%", ">60%"];
+    var html = "";
+    for (var i = 1; i <= 5; i++) {
+      var count = result.classCounts[i] || 0;
+      html += "<tr><td>" + i + "</td><td>" + names[i] + "</td><td>" + ranges[i] + "</td><td>" + count + "</td><td>" + pct(count / result.validFvcCount) + "</td></tr>";
+    }
+    el("classStats").innerHTML = html;
+  }
+
+  function setCanvasSize(canvas) {
+    canvas.width = preview.width;
+    canvas.height = preview.height;
+    canvas.style.width = "100%";
+    canvas.style.height = "auto";
+  }
+
+  function clearCanvas(id) {
+    var canvas = el(id);
+    if (!canvas) return;
+    canvas.width = 0;
+    canvas.height = 0;
+  }
+
+  function getBand(arrType, bandCode) {
+    if (arrType === "raw") {
+      if (bandCode === "B") return preview.rawB;
+      if (bandCode === "G") return preview.rawG;
+      if (bandCode === "R") return preview.rawR;
+      if (bandCode === "N") return preview.rawN;
+    } else {
+      if (bandCode === "B") return preview.corrB;
+      if (bandCode === "G") return preview.corrG;
+      if (bandCode === "R") return preview.corrR;
+      if (bandCode === "N") return preview.corrN;
+    }
+    return preview.rawB;
+  }
+
+  function rgbCanvas(id, arrType, rCode, gCode, bCode) {
+    var canvas = el(id);
+    setCanvasSize(canvas);
+    var r = getBand(arrType, rCode);
+    var g = getBand(arrType, gCode);
+    var b = getBand(arrType, bCode);
+
+    var ctx = canvas.getContext("2d");
+    var img = ctx.createImageData(preview.width, preview.height);
+    var rs = stretch(r), gs = stretch(g), bs = stretch(b);
+
+    for (var i = 0; i < r.length; i++) {
+      var o = i * 4;
+      img.data[o] = s255(r[i], rs.min, rs.max);
+      img.data[o + 1] = s255(g[i], gs.min, gs.max);
+      img.data[o + 2] = s255(b[i], bs.min, bs.max);
+      img.data[o + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  function drawRaw() {
+    if (!preview.rawR) return;
+    rgbCanvas("rawCanvas", "raw", el("rawRBand").value, el("rawGBand").value, el("rawBBand").value);
+  }
+
+  function drawCorrected() {
+    if (!preview.corrR) return;
+    rgbCanvas("correctedCanvas", "corr", el("corrRBand").value, el("corrGBand").value, el("corrBBand").value);
+  }
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function clamp01(x) {
+    if (x < 0) return 0;
+    if (x > 1) return 1;
+    return x;
+  }
+
+  function ndviColor(v) {
+    var scheme = el("ndviScheme").value;
+    if (!isFinite(v)) return [0, 0, 0];
+
+    if (scheme === "gray") {
+      var g = Math.round(clamp01((v + 1) / 2) * 255);
+      return [g, g, g];
+    }
+
+    if (scheme === "blueWhiteGreen") {
+      if (v < -1) v = -1;
+      if (v > 1) v = 1;
+      if (v < 0) {
+        var t1 = v + 1;
+        return [
+          Math.round(lerp(30, 248, t1)),
+          Math.round(lerp(64, 250, t1)),
+          Math.round(lerp(175, 252, t1))
+        ];
+      }
+      var t2 = v;
+      return [
+        Math.round(lerp(248, 21, t2)),
+        Math.round(lerp(250, 128, t2)),
+        Math.round(lerp(252, 61, t2))
+      ];
+    }
+
+    // brown-green
+    var t = clamp01((v + 0.2) / 1.2);
+    return [
+      Math.round(lerp(166, 22, t)),
+      Math.round(lerp(118, 101, t)),
+      Math.round(lerp(29, 52, t))
+    ];
+  }
+
+  function drawNdvi() {
+    if (!preview.ndvi) return;
+    var canvas = el("ndviCanvas");
+    setCanvasSize(canvas);
+    var ctx = canvas.getContext("2d");
+    var img = ctx.createImageData(preview.width, preview.height);
+
+    for (var i = 0; i < preview.ndvi.length; i++) {
+      var c = ndviColor(preview.ndvi[i]);
+      var o = i * 4;
+      img.data[o] = c[0];
+      img.data[o + 1] = c[1];
+      img.data[o + 2] = c[2];
+      img.data[o + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    updateNdviLegend();
+  }
+
+  function fvcColor(cls) {
+    var scheme = el("fvcScheme").value;
+    if (scheme === "green") {
+      if (cls === 1) return [217, 210, 195];
+      if (cls === 2) return [217, 249, 157];
+      if (cls === 3) return [163, 230, 53];
+      if (cls === 4) return [34, 197, 94];
+      if (cls === 5) return [22, 101, 52];
+      return [0, 0, 0];
+    }
+
+    if (scheme === "traffic") {
+      if (cls === 1) return [185, 28, 28];
+      if (cls === 2) return [245, 158, 11];
+      if (cls === 3) return [250, 204, 21];
+      if (cls === 4) return [132, 204, 22];
+      if (cls === 5) return [22, 163, 74];
+      return [0, 0, 0];
+    }
+
+    // natural
+    if (cls === 1) return [194, 174, 128];
+    if (cls === 2) return [226, 232, 153];
+    if (cls === 3) return [178, 214, 126];
+    if (cls === 4) return [92, 166, 86];
+    if (cls === 5) return [29, 100, 55];
+    return [0, 0, 0];
+  }
+
+  function drawFvc() {
+    if (!preview.fvcClass) return;
+    var canvas = el("fvcCanvas");
+    setCanvasSize(canvas);
+    var ctx = canvas.getContext("2d");
+    var img = ctx.createImageData(preview.width, preview.height);
+
+    for (var i = 0; i < preview.fvcClass.length; i++) {
+      var c = fvcColor(preview.fvcClass[i]);
+      var o = i * 4;
+      img.data[o] = c[0];
+      img.data[o + 1] = c[1];
+      img.data[o + 2] = c[2];
+      img.data[o + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    updateFvcLegend();
+  }
+
+  function swatch(rgb) {
+    return '<span class="swatch" style="background:rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')"></span>';
+  }
+
+  function updateNdviLegend() {
+    var scheme = el("ndviScheme").value;
+    var html = "";
+    if (scheme === "gray") {
+      html += '<span class="legend-item">' + swatch([0,0,0]) + '低值</span>';
+      html += '<span class="legend-item">' + swatch([128,128,128]) + '中值</span>';
+      html += '<span class="legend-item">' + swatch([255,255,255]) + '高值</span>';
+    } else if (scheme === "blueWhiteGreen") {
+      html += '<span class="legend-item">' + swatch([30,64,175]) + '低值/水体</span>';
+      html += '<span class="legend-item">' + swatch([248,250,252]) + '中值</span>';
+      html += '<span class="legend-item">' + swatch([21,128,61]) + '高值/植被</span>';
+    } else {
+      html += '<span class="legend-item">' + swatch([166,118,29]) + '低值/裸地</span>';
+      html += '<span class="legend-item">' + swatch([180,180,110]) + '中值</span>';
+      html += '<span class="legend-item">' + swatch([22,101,52]) + '高值/植被</span>';
+    }
+    html += '<span class="legend-item">' + swatch([0,0,0]) + '无效</span>';
+    el("ndviLegend").innerHTML = html;
+  }
+
+  function updateFvcLegend() {
+    var html = "";
+    var labels = ["裸地 <10%", "低覆盖", "中低覆盖", "中覆盖", "高覆盖"];
+    for (var i = 1; i <= 5; i++) {
+      html += '<span class="legend-item">' + swatch(fvcColor(i)) + labels[i - 1] + '</span>';
+    }
+    html += '<span class="legend-item">' + swatch([0,0,0]) + '无效</span>';
+    el("fvcLegend").innerHTML = html;
+  }
+
+  function redrawAllPreviews() {
+    drawRaw();
+    if (result) {
+      drawCorrected();
+      drawNdvi();
+      drawFvc();
+    }
+  }
+
+  function getCanvasPoint(evt, canvas) {
+    var rect = canvas.getBoundingClientRect();
+    var clientX = evt.clientX, clientY = evt.clientY;
+    if (evt.touches && evt.touches.length) {
+      clientX = evt.touches[0].clientX;
+      clientY = evt.touches[0].clientY;
+    }
+    return {
+      x: (clientX - rect.left) * canvas.width / rect.width,
+      y: (clientY - rect.top) * canvas.height / rect.height
+    };
+  }
+
+  function drawSelectionOverlay() {
+    if (!isSelecting || !selectStart || !selectEnd) return;
+    drawRaw();
+    var canvas = el("rawCanvas");
+    var ctx = canvas.getContext("2d");
+    var x = Math.min(selectStart.x, selectEnd.x);
+    var y = Math.min(selectStart.y, selectEnd.y);
+    var w = Math.abs(selectEnd.x - selectStart.x);
+    var h = Math.abs(selectEnd.y - selectStart.y);
+
+    ctx.save();
+    ctx.fillStyle = "rgba(37, 99, 235, 0.18)";
+    ctx.strokeStyle = "rgba(37, 99, 235, 0.95)";
+    ctx.lineWidth = Math.max(2, canvas.width / 600);
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeRect(x, y, w, h);
+    ctx.restore();
+  }
+
+  function beginSelect(evt) {
+    if (!imageData || !preview.width || !preview.height) return;
+    var canvas = el("rawCanvas");
+    hidePixelTooltip();
+    isSelecting = true;
+    selectStart = getCanvasPoint(evt, canvas);
+    selectEnd = { x: selectStart.x, y: selectStart.y };
+    if (canvas.setPointerCapture && evt.pointerId !== undefined) canvas.setPointerCapture(evt.pointerId);
+    evt.preventDefault();
+  }
+
+  function moveSelect(evt) {
+    if (!isSelecting) return;
+    selectEnd = getCanvasPoint(evt, el("rawCanvas"));
+    drawSelectionOverlay();
+    evt.preventDefault();
+  }
+
+  function endSelect(evt) {
+    if (!isSelecting) return;
+    selectEnd = getCanvasPoint(evt, el("rawCanvas"));
+    isSelecting = false;
+
+    var x0p = Math.max(0, Math.min(selectStart.x, selectEnd.x));
+    var x1p = Math.min(preview.width, Math.max(selectStart.x, selectEnd.x));
+    var y0p = Math.max(0, Math.min(selectStart.y, selectEnd.y));
+    var y1p = Math.min(preview.height, Math.max(selectStart.y, selectEnd.y));
+
+    selectStart = null;
+    selectEnd = null;
+
+    if ((x1p - x0p) < 8 || (y1p - y0p) < 8) {
+      drawRaw();
+      setStatus("框选范围太小，未更新预览范围。", "warn");
+      return;
+    }
+
+    var base = preview.crop || activeCrop();
+    var srcX0 = Math.floor(base.x0 + x0p * preview.step);
+    var srcY0 = Math.floor(base.y0 + y0p * preview.step);
+    var srcX1 = Math.ceil(base.x0 + x1p * preview.step);
+    var srcY1 = Math.ceil(base.y0 + y1p * preview.step);
+
+    srcX0 = Math.max(0, Math.min(imageData.width - 1, srcX0));
+    srcY0 = Math.max(0, Math.min(imageData.height - 1, srcY0));
+    srcX1 = Math.max(srcX0 + 1, Math.min(imageData.width, srcX1));
+    srcY1 = Math.max(srcY0 + 1, Math.min(imageData.height, srcY1));
+
+    cropRegion = { x0: srcX0, y0: srcY0, x1: srcX1, y1: srcY1 };
+    refreshPreviewsAfterCrop();
+    setStatus("已将所有预览图缩放到框选范围。统计结果仍基于整幅影像。", "ok");
+    evt.preventDefault();
+  }
+
+  function refreshPreviewsAfterCrop() {
+    if (!imageData) return;
+    preparePreview();
+    drawRaw();
+
+    if (result) {
+      applyCorrectionToPreview(result.coefficients);
+      applyFvcToPreview(result.p5, result.p95);
+      drawCorrected();
+      drawNdvi();
+      drawFvc();
+    } else {
+      clearCanvas("correctedCanvas");
+      clearCanvas("ndviCanvas");
+      clearCanvas("fvcCanvas");
+    }
+    updateCropInfo();
+  }
+
+  function resetCrop() {
+    if (!imageData) return;
+    cropRegion = null;
+    refreshPreviewsAfterCrop();
+    setStatus("已恢复全图预览。", "ok");
+  }
+
+  function downloadCanvas(id, name) {
+    var canvas = el(id);
+    if (!canvas || !canvas.width) {
+      setStatus("当前没有可下载的预览图。", "warn");
+      return;
+    }
+    var a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  function exportStats() {
+    if (!result) {
+      setStatus("尚未生成统计结果。", "warn");
+      return;
+    }
+    var c = result.coefficients;
+    var lines = [];
+    lines.push("Item,Value");
+    lines.push("File," + (imageData ? imageData.fileName : ""));
+    lines.push("Width," + imageData.width);
+    lines.push("Height," + imageData.height);
+    lines.push("Total_pixels," + result.total);
+    lines.push("Valid_NDVI_pixels_0_to_1," + result.validNdviCount);
+    lines.push("NDVI_P5," + result.p5);
+    lines.push("NDVI_P95," + result.p95);
+    lines.push("Valid_FVC_pixels," + result.validFvcCount);
+    lines.push("Preview_crop," + (cropRegion ? ("x=" + cropRegion.x0 + "-" + (cropRegion.x1 - 1) + ";y=" + cropRegion.y0 + "-" + (cropRegion.y1 - 1)) : "full"));
+    [
+      ["B", "Blue", c.B],
+      ["G", "Green", c.G],
+      ["R", "Red", c.R],
+      ["NIR", "NIR", c.N]
+    ].forEach(function (item) {
+      var prefix = item[0];
+      var cfg = item[2];
+      lines.push(prefix + "_model_type," + cfg.model);
+      lines.push(prefix + "_model_name," + (MODEL_NAMES[cfg.model] || cfg.model));
+      lines.push(prefix + "_param_a," + cfg.a);
+      lines.push(prefix + "_param_b," + cfg.b);
+      if (modelParams(cfg.model).indexOf("c") >= 0) lines.push(prefix + "_param_c," + cfg.c);
+      if (modelParams(cfg.model).indexOf("d") >= 0) lines.push(prefix + "_param_d," + cfg.d);
+    });
+    lines.push("");
+    lines.push("Class,Name,FVC_range,Pixel_count,Ratio_valid_FVC");
+
+    var names = ["", "Bare", "Low", "Medium_low", "Medium", "High"];
+    var ranges = ["", "<10%", "10%-30%", "30%-45%", "45%-60%", ">60%"];
+    for (var i = 1; i <= 5; i++) {
+      var count = result.classCounts[i] || 0;
+      var ratio = result.validFvcCount > 0 ? count / result.validFvcCount : 0;
+      lines.push([i, names[i], ranges[i], count, ratio].join(","));
+    }
+
+    var blob = new Blob(["\ufeff" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    var baseName = imageData && imageData.fileName ? imageData.fileName.replace(/\.[^.]+$/, "") : "result";
+    a.href = url;
+    a.download = baseName + "_NDVI_FVC_statistics.csv";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 0);
+  }
+
+  function setIdentity() {
+    BAND_KEYS.forEach(function (k) {
+      el("model" + k).value = "linear";
+      el("a" + k).value = "1";
+      el("b" + k).value = "0";
+      el("c" + k).value = "0";
+      el("d" + k).value = "0";
+      updateModelParamsForBand(k);
+    });
+  }
+
+  function clearCoef() {
+    BAND_KEYS.forEach(function (k) {
+      ["a", "b", "c", "d"].forEach(function (name) {
+        el(name + k).value = "";
+      });
+    });
+  }
+
+  function clearAll() {
+    imageData = null;
+    result = null;
+    cropRegion = null;
+    isSelecting = false;
+    selectStart = null;
+    selectEnd = null;
+    preview = { width: 0, height: 0, step: 1, crop: null };
+
+    el("tifInput").value = "";
+    el("runBtn").disabled = true;
+    hide("resultCard");
+    hide("previewCard");
+
+    ["rawCanvas", "correctedCanvas", "ndviCanvas", "fvcCanvas"].forEach(clearCanvas);
+    hidePixelTooltip();
+    setStatus("已清空，等待读取影像。");
+  }
+
+  function fillBandSelect(id, value) {
+    var s = el(id);
+    s.innerHTML = "";
+    bandOptions.forEach(function (o) {
+      var opt = document.createElement("option");
+      opt.value = o.value;
+      opt.textContent = o.text;
+      if (o.value === value) opt.selected = true;
+      s.appendChild(opt);
+    });
+  }
+
+  function fillPresetSelect(id, defaultValue) {
+    var s = el(id);
+    s.innerHTML = "";
+    compositePresets.forEach(function (p) {
+      var opt = document.createElement("option");
+      opt.value = p.value;
+      opt.textContent = p.text;
+      if (p.value === defaultValue) opt.selected = true;
+      s.appendChild(opt);
+    });
+  }
+
+  function fillColorSelects() {
+    fillPresetSelect("rawPreset", "true");
+    fillBandSelect("rawRBand", "R");
+    fillBandSelect("rawGBand", "G");
+    fillBandSelect("rawBBand", "B");
+
+    fillPresetSelect("corrPreset", "true");
+    fillBandSelect("corrRBand", "R");
+    fillBandSelect("corrGBand", "G");
+    fillBandSelect("corrBBand", "B");
+
+    el("ndviScheme").innerHTML =
+      '<option value="gray" selected>灰白影像（默认）</option>' +
+      '<option value="blueWhiteGreen">蓝—白—绿：区分低值和高值</option>' +
+      '<option value="brownGreen">棕—绿：裸地到植被</option>';
+
+    el("fvcScheme").innerHTML =
+      '<option value="green" selected>绿色渐变：裸地到高覆盖</option>' +
+      '<option value="traffic">红黄绿分级：低覆盖到高覆盖</option>' +
+      '<option value="natural">自然地表色：土黄到深绿</option>';
+
+    updateNdviLegend();
+    updateFvcLegend();
+  }
+
+  function setCompositeFromPreset(prefix) {
+    var preset = el(prefix + "Preset").value;
+    var found = compositePresets.find(function (p) { return p.value === preset; });
+    if (found && found.bands) {
+      el(prefix + "RBand").value = found.bands[0];
+      el(prefix + "GBand").value = found.bands[1];
+      el(prefix + "BBand").value = found.bands[2];
+    }
+  }
+
+  function resetCorrectedCompositeToTrueColor() {
+    var preset = el("corrPreset");
+    if (!preset) return;
+    preset.value = "true";
+    setCompositeFromPreset("corr");
+  }
+
+  function bindComposite(prefix, drawFn) {
+    el(prefix + "Preset").onchange = function () {
+      setCompositeFromPreset(prefix);
+      drawFn();
+    };
+    [prefix + "RBand", prefix + "GBand", prefix + "BBand"].forEach(function (id) {
+      el(id).onchange = function () {
+        el(prefix + "Preset").value = "custom";
+        drawFn();
+      };
+    });
+  }
+
+
+  function className(cls) {
+    if (cls === 1) return "裸地";
+    if (cls === 2) return "低覆盖";
+    if (cls === 3) return "中低覆盖";
+    if (cls === 4) return "中覆盖";
+    if (cls === 5) return "高覆盖";
+    return "无效";
+  }
+
+  function formatValue(v, digits) {
+    return isFinite(v) ? Number(v).toFixed(digits) : "无效";
+  }
+
+  function getSourceCoordFromCanvasPoint(pt) {
+    if (!preview || !preview.crop || !imageData) return null;
+
+    var x = Math.floor(pt.x);
+    var y = Math.floor(pt.y);
+
+    if (x < 0 || y < 0 || x >= preview.width || y >= preview.height) return null;
+
+    var regionW = preview.crop.x1 - preview.crop.x0;
+    var regionH = preview.crop.y1 - preview.crop.y0;
+
+    var srcX = preview.crop.x0 + Math.min(x * preview.step, regionW - 1);
+    var srcY = preview.crop.y0 + Math.min(y * preview.step, regionH - 1);
+
+    return {
+      px: x,
+      py: y,
+      srcX: srcX,
+      srcY: srcY,
+      idxPreview: y * preview.width + x,
+      idxSource: srcY * imageData.width + srcX
+    };
+  }
+
+  function tooltipHtml(canvasId, coord) {
+    var i = coord.idxPreview;
+    var si = coord.idxSource;
+    var html = '<b>像素位置</b><br>' +
+      '<span class="muted">原图列 X：</span>' + coord.srcX + '，<span class="muted">原图行 Y：</span>' + coord.srcY + '<br>' +
+      '<span class="muted">预览列：</span>' + coord.px + '，<span class="muted">预览行：</span>' + coord.py + '<br>';
+
+    if (canvasId === "rawCanvas") {
+      html += '<hr style="border:none;border-top:1px solid rgba(255,255,255,.16);margin:6px 0">' +
+        '<b>原始像元值</b><br>' +
+        'B1 蓝光：' + formatValue(Number(imageData.B[si]), 4) + '<br>' +
+        'B2 绿光：' + formatValue(Number(imageData.G[si]), 4) + '<br>' +
+        'B3 红光：' + formatValue(Number(imageData.R[si]), 4) + '<br>' +
+        'B4 近红外：' + formatValue(Number(imageData.N[si]), 4);
+      return html;
+    }
+
+    if (!result) {
+      return html + '<hr style="border:none;border-top:1px solid rgba(255,255,255,.16);margin:6px 0">尚未执行光谱校正、NDVI 与 FVC 计算。';
+    }
+
+    if (canvasId === "correctedCanvas") {
+      html += '<hr style="border:none;border-top:1px solid rgba(255,255,255,.16);margin:6px 0">' +
+        '<b>校正后反射率</b><br>' +
+        'B1 蓝光：' + formatValue(preview.corrB[i], 6) + '<br>' +
+        'B2 绿光：' + formatValue(preview.corrG[i], 6) + '<br>' +
+        'B3 红光：' + formatValue(preview.corrR[i], 6) + '<br>' +
+        'B4 近红外：' + formatValue(preview.corrN[i], 6);
+      return html;
+    }
+
+    if (canvasId === "ndviCanvas") {
+      html += '<hr style="border:none;border-top:1px solid rgba(255,255,255,.16);margin:6px 0">' +
+        '<b>NDVI / FVC</b><br>' +
+        'NDVI：' + formatValue(preview.ndvi[i], 6) + '<br>' +
+        'FVC：' + formatValue(preview.fvc[i], 6) + '<br>' +
+        'FVC 等级：' + className(preview.fvcClass[i]);
+      return html;
+    }
+
+    if (canvasId === "fvcCanvas") {
+      html += '<hr style="border:none;border-top:1px solid rgba(255,255,255,.16);margin:6px 0">' +
+        '<b>FVC 分级</b><br>' +
+        'FVC：' + formatValue(preview.fvc[i], 6) + '<br>' +
+        '等级值：' + (preview.fvcClass[i] || 0) + '<br>' +
+        '等级类型：' + className(preview.fvcClass[i]);
+      return html;
+    }
+
+    return html;
+  }
+
+  function showPixelTooltip(evt, canvasId) {
+    if (!imageData || !preview || !preview.width || !preview.height) return;
+    if (canvasId === "rawCanvas" && isSelecting) return;
+
+    var canvas = el(canvasId);
+    var pt = getCanvasPoint(evt, canvas);
+    var coord = getSourceCoordFromCanvasPoint(pt);
+    var tip = el("pixelTooltip");
+
+    if (!coord || !tip) {
+      hidePixelTooltip();
+      return;
+    }
+
+    tip.innerHTML = tooltipHtml(canvasId, coord);
+    tip.style.display = "block";
+
+    var offset = 16;
+    var left = evt.clientX + offset;
+    var top = evt.clientY + offset;
+
+    var rect = tip.getBoundingClientRect();
+    if (left + rect.width > window.innerWidth - 8) left = evt.clientX - rect.width - offset;
+    if (top + rect.height > window.innerHeight - 8) top = evt.clientY - rect.height - offset;
+
+    tip.style.left = Math.max(8, left) + "px";
+    tip.style.top = Math.max(8, top) + "px";
+  }
+
+  function hidePixelTooltip() {
+    var tip = el("pixelTooltip");
+    if (tip) tip.style.display = "none";
+  }
+
+  function bindPixelTooltip(canvasId) {
+    var c = el(canvasId);
+    if (!c) return;
+    c.addEventListener("pointermove", function (evt) {
+      showPixelTooltip(evt, canvasId);
+    });
+    c.addEventListener("pointerleave", hidePixelTooltip);
+  }
+
+  function bind() {
+    fillColorSelects();
+    updateAllModelParams();
+
+    el("readBtn").onclick = readTif;
+    el("runBtn").onclick = runAll;
+    el("clearBtn").onclick = clearAll;
+    el("importCoefBtn").onclick = function () {
+      var input = el("coefCsvInput");
+      if (input) input.click();
+    };
+    el("coefCsvInput").onchange = function () {
+      if (this.files && this.files.length) importCoefficientCsv(this.files[0]);
+      this.value = "";
+    };
+    el("identityBtn").onclick = setIdentity;
+    el("clearCoefBtn").onclick = clearCoef;
+    el("exportStatsBtn").onclick = exportStats;
+    el("downloadNdviPngBtn").onclick = function () { downloadCanvas("ndviCanvas", "NDVI_preview.png"); };
+    el("downloadFvcPngBtn").onclick = function () { downloadCanvas("fvcCanvas", "FVC_class_preview.png"); };
+
+    bindComposite("raw", drawRaw);
+    bindComposite("corr", drawCorrected);
+
+    el("ndviScheme").onchange = drawNdvi;
+    el("fvcScheme").onchange = drawFvc;
+
+    BAND_KEYS.forEach(function (k) {
+      var modelNode = el("model" + k);
+      if (modelNode) modelNode.onchange = function () { updateModelParamsForBand(k); };
+    });
+
+    var resetBtn = el("resetCropBtn");
+    if (resetBtn) resetBtn.onclick = resetCrop;
+
+    bindPixelTooltip("rawCanvas");
+    bindPixelTooltip("correctedCanvas");
+    bindPixelTooltip("ndviCanvas");
+    bindPixelTooltip("fvcCanvas");
+
+    var raw = el("rawCanvas");
+    if (raw) {
+      raw.addEventListener("pointerdown", beginSelect);
+      raw.addEventListener("pointermove", moveSelect);
+      raw.addEventListener("pointerup", endSelect);
+      raw.addEventListener("pointercancel", function () {
+        isSelecting = false;
+        selectStart = null;
+        selectEnd = null;
+        drawRaw();
+      });
+    }
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
+  else bind();
+})();
+</script>
+</body>
+</html>
